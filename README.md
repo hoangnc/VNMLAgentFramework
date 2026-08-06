@@ -14,6 +14,7 @@
 3. [Quick Guideline: Implement Agent Skills](#3-quick-guideline-implement-agent-skills)
 4. [Quick Guideline: Run Agent Harness](#4-quick-guideline-run-agent-harness)
 5. [Checklist Triển Khai](#5-checklist-triển-khai)
+6. [Example PriceHunter Agent](#6-example-pricehunter-agent)
 
 ---
 
@@ -712,6 +713,10 @@ while (true)
 
 ---
 
+## 6. Example: PriceHunter Agent
+![Login](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLAgentFramework_Example_Agent_PriceHunter.png?raw=true "PriceHunter Agent")
+
+---
 ## Phụ lục: File Structure
 
 ```
@@ -743,5 +748,3 @@ VnMLStudio.Plugin.LlamaCppSharp/
 ├── TextToolCallExtractor.cs
 └── LlamaCppApiClient.cs
 ```
-## Example: PriceHunter Agent.
-![Login](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLAgentFramework_Example_Agent_PriceHunter.png?raw=true "PriceHunter Agent")
