@@ -397,22 +397,22 @@ flowchart TD
 - `ChatRequestBuilder.Clone()` phải là **deep clone** (JSON serialize/deserialize) để tránh mutate request gốc giữa các round
 
 ```mermaid
-flowchart LR
+    flowchart LR
     subgraph Domain["Domain Model"]
-        TC[ToolCall\nName, Arguments, Id]
+        TC["ToolCall (Name, Arguments, Id)"]
     end
 
     subgraph API["API Format"]
-        TA[ToolCallApi\nId, Type, Function\n{name, arguments}]
+        TA["ToolCallApi (Id, Type, Function)"]
     end
 
     subgraph Msg["ChatMessage"]
-        M[ToolCalls: List~ToolCallApi~]
+        M["ToolCalls: List<ToolCallApi>"]
     end
 
     TC -->|ToToolCallApi| TA
     TA -->|Serialize| M
-    M -->|HTTP JSON| SRV[llama.cpp Server]
+    M -->|HTTP JSON| SRV["llama.cpp Server"]
 ```
 
 #### 2.2.5 SkillRegistry vs ToolRegistry
