@@ -700,9 +700,9 @@ while (true)
 | # | Item | Status |
 |---|------|--------|
 | 1 | `ToolCallApi` format đúng OpenAI schema (`id`, `type`, `function`) | ☐ |
-| 2 | `ChatMessage.ToolCalls` dùng `List<ToolCallApi>` | ☐ |
+| 2 | `ChatMessage.ToolCalls` dùng `List{ToolCallApi}` | ☐ |
 | 3 | `ChatRequestBuilder.Clone()` deep clone bằng JSON | ☐ |
-| 4 | `TextToolCallExtractor` xử lý được `<|"|>` và unquoted keys | ☐ |
+| 4 | `TextToolCallExtractor` xử lý được token quote lạ và unquoted keys | ☐ |
 | 5 | Orchestrator discard content buffer khi có tool call | ☐ |
 | 6 | `ExtractFinalAnswer` strip thinking prefix | ☐ |
 | 7 | Skill `ExecuteAsync` defensive parse args (case-insensitive + regex fallback) | ☐ |
