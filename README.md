@@ -743,3 +743,5 @@ VnMLStudio.Plugin.LlamaCppSharp/
 ├── TextToolCallExtractor.cs
 └── LlamaCppApiClient.cs
 ```
+## Example: PriceHunter Agent.
+![Login](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLAgentFramework_Example_Agent_PriceHunter.png?raw=true "PriceHunter Agent")
