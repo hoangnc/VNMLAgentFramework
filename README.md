@@ -714,7 +714,10 @@ while (true)
 ---
 
 ## 6. Example: PriceHunter Agent
-![Login](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLAgentFramework_Example_Agent_PriceHunter.png?raw=true "PriceHunter Agent")
+
+![PriceHunter Agent](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLAgentFramework_Example_Agent_PriceHunter.png?raw=true "PriceHunter Agent")
+![PriceHunter Agent](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLAgentFramework_Example_Agent_PriceHunter1.png?raw=true "PriceHunter Agent")
+![PriceHunter Agent](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLAgentFramework_Example_Agent_PriceHunter2.png?raw=true "PriceHunter Agent")
 
 ---
 ## Phụ lục: File Structure
