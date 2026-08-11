@@ -1453,6 +1453,3 @@ VnMLStudio.Plugin.LlamaCppSharp/
 - **GGUF Parsing**: `ModelRegistry.RefreshAsync()` reads only file headers (~1KB each), fast even for 100+ models.
 
 ---
-
-*Generated for VnMLStudio.Plugin.LlamaCppSharp v1.0*
-
