@@ -1,3 +1,5 @@
+![VNML Studio](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLStudio_UI_Preview.png?raw=true "VNML Studio")
+
 # TÀI LIỆU KIẾN TRÚC & TRIỂN KHAI
 ## VnMLStudio LLM Agent Framework
 
