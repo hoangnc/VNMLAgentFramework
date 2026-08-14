@@ -4,7 +4,7 @@
 
 **Version:** 1.0  
 **Date:** 2026-08-14  
-**Scope:** P0 Reflection → P1 Planning & Multi-Agent → P2 Learning & Proactive → P3 Dynamic Tool Synthesis
+**Scope:** P0 Reflection → P1 Planning & Multi-Agent → P2 Learning & Proactive → P3 Dynamic Tool Synthesis  
 **Author:** Hoang Nguyen Cong
 ---
 
