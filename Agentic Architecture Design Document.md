@@ -89,7 +89,19 @@ flowchart LR
     
     R --> HARNESS[Existing Harness]
 ```
-
+```mermaid
+graph TD
+    Input[User Prompt / Request] --> P3[Proactive Level 4 - Outermost]
+    P3 --> P2[Learning Level 3]
+    P2 --> P1[Hierarchical Planner Level 2]
+    P1 --> P0[Reflective ReAct Level 1 - Innermost]
+    P0 --> Llama[Llama.cpp / Gemma 4 E2B]
+    
+    style P0 fill:#f9f,stroke:#333,stroke-width:2px
+    style P1 fill:#bbf,stroke:#333,stroke-width:2px
+    style P2 fill:#fbf,stroke:#333,stroke-width:2px
+    style P3 fill:#f96,stroke:#333,stroke-width:2px
+```
 **Nguyên tắc:** Mỗi orchestrator wrap orchestrator bên trong qua `IStreamingAgentOrchestrator`. Có thể bật/tắt từng layer qua DI mà không sửa code.
 
 ### 2.3 Data Flow — End to End
