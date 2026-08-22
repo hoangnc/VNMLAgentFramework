@@ -164,7 +164,7 @@ User Input (100 URLs)
 | Actor | Description | Interaction |
 |-------|-------------|-------------|
 | **SEO Manager** | Người dùng cuối, cung cấp danh sách URL | Gửi batch URL, nhận báo cáo |
-| **LLM Engine** | Gemma-4-3B / GPT-4o-mini | Tạo content, phân tích, reflection |
+| **LLM Engine** | Gemma-4-E2B  | Tạo content, phân tích, reflection |
 | **External Web** | Các website đối thủ | Được crawl qua HTTP |
 | **File System** | Lưu trữ local | Lưu queue, report, article |
 
@@ -817,7 +817,7 @@ Phase 3 (Future): Distributed
 ┌────────────────────────────────────────┐
 │           Host Machine                 │
 │  ┌────────────────────────────────┐    │
-│  │  .NET 8 Application            │    │
+│  │  .NET 10 Application            │    │
 │  │  ┌────────────────────────┐    │    │
 │  │  │ Agent Team (5 workers) │    │    │
 │  │  │ + Supervisor           │    │    │
@@ -827,7 +827,7 @@ Phase 3 (Future): Distributed
 │  │  └────────────────────────┘    │    │
 │  │  ┌────────────────────────┐    │    │
 │  │  │ LlamaCppSharp (GGUF)   │    │    │
-│  │  │ Model: gemma-4-3b      │    │    │
+│  │  │ Model:gemma-4-E2B      │    │    │
 │  │  └────────────────────────┘    │    │
 │  └────────────────────────────────┘    │
 │  ┌────────────────────────────────┐    │
@@ -844,10 +844,10 @@ Phase 3 (Future): Distributed
 ### 12.2 Docker Deployment (Future)
 
 ```dockerfile
-FROM mcr.microsoft.com/dotnet/runtime:8.0
+FROM mcr.microsoft.com/dotnet/runtime:10.0
 COPY ./publish /app
-COPY ./models/gemma-4-3b.gguf /models/
-ENV LLAMA_MODEL_PATH=/models/gemma-4-3b.gguf
+COPY ./models/gemma-4-E2B.gguf /models/
+ENV LLAMA_MODEL_PATH=/models/gemma-4-E2B.gguf
 WORKDIR /app
 ENTRYPOINT ["dotnet", "SEOCrawlAgent.dll"]
 ```
@@ -1297,18 +1297,18 @@ public enum ErrorSeverity
 ```
 Local Dev:
   OS: Windows 11 / Ubuntu 22.04
-  .NET: 8.0 SDK
-  LLM: Gemma-4-3B GGUF (local)
+  .NET: 10.0 SDK
+  LLM: Gemma-4-E2B GGUF (local)
   
 CI/CD (GitHub Actions):
   OS: ubuntu-latest
-  .NET: 8.0
+  .NET: 10.0
   LLM: Mocked (NSubstitute) hoặc GPT-4o-mini API key
   
 Staging:
   Docker container
   Volume mount: ./models /models
-  Env: LLAMA_MODEL_PATH=/models/gemma-4-3b.gguf
+  Env: LLAMA_MODEL_PATH=/models/gemma-4-E2B.gguf
 ```
 
 ### 14.9 Test Schedule
