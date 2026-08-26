@@ -7,6 +7,8 @@
 ## VNML Studio:
 
 ![VNML Studio](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLStudio_UI_Preview.png?raw=true "VNML Studio")
+![VNML Studio](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLStudio_PluginMMO_Screen_01.png?raw=true "VNML Studio")
+![VNML Studio](https://github.com/hoangnc/VNMLAgentFramework/blob/main/VNMLStudio_PluginMMO_Screen_02.png?raw=true "VNML Studio")
 
 ## SEO CRAWL BATCH ORCHESTRATOR Console App (Build in VNML AGENT FRAMEWORK)
 
