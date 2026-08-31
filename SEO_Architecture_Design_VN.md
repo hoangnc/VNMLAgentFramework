@@ -1,1510 +1,856 @@
-# SEO Content Crawl & Rewrite Orchestrator
-## High-Level Design (HLD) & Detail Design Document
+# SEOCrawlSupervisorOrchestrator — High-Level Design & Detail Design
 
-**Version:** 1.0  
-**Date:** 2026-08-21  
-**Author:** Hoang Nguyen Cong  
-**Framework:** VnMLStudio.Plugin.LlamaCppSharp Agent Framework  
-**Target Scale:** 100 URLs/batch, sequential processing with reflection loop
+## Document Revision History
 
----
+| Version | Date | Author | Changes | Description |
+|---|---|---|---|---|
+| 1.0.0 | 2026-08-28 | System | Initial Release | First version with basic ReAct loop |
+| 1.1.0 | 2026-08-29 | System | Architecture Refactor | Introduced Chain of Responsibility pattern with 6 handlers |
+| 1.2.0 | 2026-08-30 | System | Dynamic Timeout | Added token-based timeout calculation for LLM operations |
+| 1.3.0 | 2026-08-31 | System | Event-Driven Progress | Unified streaming/non-streaming via Progress events with emoji logging |
+| 1.4.0 | 2026-08-31 | System | Reflection Engine | Extracted Reflection logic into dedicated engine with 4-layer heuristic |
 
-## Table of Contents
 
-1. [Executive Summary](#1-executive-summary)
-2. [High-Level Architecture](#2-high-level-architecture)
-3. [System Context](#3-system-context)
-4. [Component Overview](#4-component-overview)
-5. [Data Flow](#5-data-flow)
-6. [Technology Stack](#6-technology-stack)
-7. [Detail Design](#7-detail-design)
-   - 7.1 [Orchestrator Layer](#71-orchestrator-layer)
-   - 7.2 [Agent Team](#72-agent-team)
-   - 7.3 [Tool Registry](#73-tool-registry)
-   - 7.4 [Reflection Engine](#74-reflection-engine)
-   - 7.5 [Auto-Tool-Synthesis](#75-auto-tool-synthesis)
-8. [Data Models](#8-data-models)
-9. [Error Handling & Resilience](#9-error-handling--resilience)
-10. [Security Considerations](#10-security-considerations)
-11. [Performance & Scalability](#11-performance--scalability)
-12. [Deployment Architecture](#12-deployment-architecture)
-13. [API Contract](#13-api-contract)
-14. [Test Plan](#14-test-plan)
-15. [Appendix A: Tool Specifications](#appendix-a-tool-specifications)
-16. [Appendix B: Configuration Reference](#appendix-b-configuration-reference)
+# 1. Executive Summary
 
----
+1.1 System Overview
 
-## 1. Executive Summary
+The SEOCrawlSupervisorOrchestrator is a production-grade, pipeline-based orchestration system designed for automated SEO content processing. It manages end-to-end workflows including:
 
-### 1.1 Purpose
-Hệ thống **SEO Content Crawl & Rewrite Orchestrator** là một Multi-Agent System (MAS) chuyên biệt, được xây dựng trên framework `VnMLStudio.Plugin.LlamaCppSharp`, có khả năng:
-- **Crawl** nội dung từ ~100 URL đối thủ
-- **Phân tích** chiến lược SEO (từ khóa, cấu trúc, readability)
-- **Viết lại** bài viết SEO gốc 100%, không duplicate
-- **Validate** chất lượng qua Reflection Engine với heuristic + LLM grading
-- **Re-plan** tự động nếu content không đạt chuẩn (tối đa 3 correction rounds)
+- Web crawling – extract content from target URLs
+- SEO analysis – evaluate keyword density, readability, structure
+- Content writing – generate SEO-optimized articles
+- Quality reflection – multi-layer quality assurance with auto-correction
+- Result persistence – save articles and generate comprehensive reports
+1.2 Key Features
 
-### 1.2 Agent Level Classification
-Theo thang phân loại Agent Autonomy, hệ thống này hoạt động ở **Level 4 (Self-Reflecting Agent với Hierarchical Planning)**:
+| Feature | Description | Status |
+| --- | --- | --- |
+| Pipeline Architecture | Chain of Responsibility with 6 handlers | ✅ Complete |
+| Dynamic Timeout | Token-based timeout calculation per LLM | ✅ Complete |
+| Event-Driven Progress | Real-time UI updates via Progress events | ✅ Complete |
+| Vietnamese SEO | Custom heuristic for Vietnamese content | ✅ Complete |
+| Auto Tool Synthesis | Dynamic tool generation for missing capabilities | ✅ Complete |
+| 4-Layer Reflection | Duplicate words, templates, density, readability | ✅ Complete |
+| Auto-Correction | Rewrite content when quality fails | ✅ Complete |
+| Emoji Logging | Rich visual feedback with emojis | ✅ Complete |
 
-| Level | Đặc điểm | Hệ thống này |
-|-------|----------|--------------|
-| L1 | Single-tool, hard-coded | ❌ |
-| L2 | Multi-tool selection (ReAct) | ❌ |
-| L3 | Hierarchical Planning (DAG) | ✅ Có DAG workflow |
-| L4 | Self-Reflecting + Re-plan | ✅ **Reflection + Rewrite loop** |
-| L5 | Self-Improving (sinh code) | ⚠️ Optional (AutoToolSynthesis) |
+1.3 Technology Stack
 
-> **Quyết định kiến trúc:** Không dùng Level 5 (Roslyn dynamic compilation) cho pipeline SEO vì:
-> - Các tool (Scrape/Analyze/Write) là **nghiệp vụ ổn định** — không cần sinh code runtime
-> - Level 5 overhead ~15-20 giây/compile — quá chậm cho batch 100 URL
-> - Level 4 giữ được **reflection + re-plan** — yếu tố quan trọng nhất cho chất lượng content
+| Layer | Technology |
+| --- | --- |
+| Language | C# (.NET 10) |
+| AI/LLM | LlamaCppSharp |
+| Design Pattern | Chain of Responsibility, Pipeline, Observer |
+| Logging | Serilog, Microsoft.Extensions.Logging |
+| Data Format | JSON, Markdown |
+| Concurrency | Async/Await, CancellationToken, Channels |
 
-### 1.3 Non-Goals
-- Không hỗ trợ real-time streaming crawl (batch processing only)
-- Không tự động publish lên CMS (output là file/text)
-- Không thay thế human editor (bản thảo cần human review trước publish)
 
----
+# 2. High-Level Design (HLD)
 
-## 2. High-Level Architecture
+2.1 System Architecture
 
-### 2.1 Architectural Pattern
-**Hierarchical Multi-Agent with Supervisor-Orchestrator Pattern**
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         USER INTERFACE LAYER                            │
-│                    (CLI / API / Web Dashboard)                          │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      ORCHESTRATOR LAYER (Level 4)                       │
-│              SEOCrawlSupervisorOrchestrator (Singleton)                 │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐ │
-│  │   PLANNER   │  │    ReAct     │  │  REFLECTION  │  │   Re-plan   │ │
-│  │   (DAG)     │──│   Executor   │──│   Engine     │──│   Loop      │ │
-│  └─────────────┘  └──────────────┘  └──────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         AGENT TEAM LAYER                                │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐    │
-│  │Dispatcher│ │ Scraper  │ │ Analyzer │ │  Writer  │ │ Validator│    │
-│  │  (L3)    │ │  (L2)    │ │  (L3)    │ │  (L3)    │ │  (L4)    │    │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘    │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         TOOL REGISTRY LAYER                             │
-│  ┌─────────┐ ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌───────────┐  │
-│  │WebScraper│ │SEOAnalyze│ │ContentWrite│ │DataConvert │ │DirectQuery│  │
-│  └─────────┘ └──────────┘ └───────────┘ └────────────┘ └───────────┘  │
-│  ┌───────────┐ ┌────────────┐ ┌─────────────┐ ┌─────────────────────┐  │
-│  │MathOperation│ │FactorialCalc│ │RunCommand   │ │DirectRequest (Session)│  │
-│  └───────────┘ └────────────┘ └─────────────┘ └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      INFRASTRUCTURE LAYER                               │
-│  ┌────────────┐  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │LlamaCpp API│  │InMemoryQueue│  │SlidingWindow │  │File System   │  │
-│  │(Local LLM) │  │(Messenger)  │  │Memory        │  │(I/O)         │  │
-│  └────────────┘  └─────────────┘  └──────────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+```mermaid
+flowchart TD
+    subgraph UI["User Interface"]
+        A["User Input"]
+        B["Real-time Progress"]
+        C["Final Report"]
+    end
 
-### 2.2 Component Interaction
+    subgraph ORCH["SEOCrawlSupervisorOrchestrator"]
+        D["URL Parser"]
+        E["Pipeline Executor"]
+        F["Event Subscriber"]
+        G["Report Generator"]
+    end
 
-```
-User Input (100 URLs)
-       │
-       ▼
-[SEOCrawlSupervisorOrchestrator]
-       │
-       ├── Parse URLs ──► [URLBatchDispatcher]
-       │
-       ├── Per URL Loop ──► [WebScraper] ──► Raw HTML/Text
-       │                           │
-       │                           ▼
-       │                    [SEOAnalyzer] ──► Analysis Report
-       │                           │
-       │                           ▼
-       │                    [ContentWriter] ──► Draft Article
-       │                           │
-       │                           ▼
-       │                    [QualityValidator]
-       │                           │
-       │              ┌────────────┴────────────┐
-       │              │                         │
-       │           PASS                      FAIL
-       │              │                         │
-       │              ▼                         ▼
-       │         Finalize              [Re-plan Loop]
-       │              │              (max 3 rounds)
-       │              │                         │
-       │              └────────► [ContentWriter] (Rewrite)
-       │
-       └── Aggregate ──► Final Report (Markdown)
+    subgraph PIPE["Pipeline - Chain of Responsibility"]
+        H1["UrlValidationHandler"]
+        H2["UrlQuantityValidationHandler"]
+        H3["ScrapingHandler"]
+        H4["AnalysisHandler"]
+        H5["ContentWritingHandler"]
+        H6["ReflectionHandler"]
+        H7["SavingHandler"]
+        H1 --> H2 --> H3 --> H4 --> H5 --> H6 --> H7
+    end
+
+    subgraph ENG["Core Engines"]
+        E1["TimeoutCalculator"]
+        E2["ReflectionEngine"]
+        E3["LoggingFactory"]
+    end
+
+    subgraph WORK["Specialist Agents"]
+        W1["Scraper Agent"]
+        W2["SEO Analyzer"]
+        W3["Content Writer"]
+    end
+
+    subgraph STORE["Data Storage"]
+        S1[("JSON Files")]
+        S2[("Markdown Files")]
+        S3[("Reports")]
+    end
+
+    A --> D
+    D --> E
+    E --> H1
+
+    H3 -.-> W1
+    H4 -.-> W2
+    H5 -.-> W3
+    H6 -.-> E2
+
+    E --> F
+    F --> B
+    E --> G
+    G --> C
+
+    E1 -.-> H1
+    E3 -.-> H1
+
+    W1 --> S1
+    W2 --> S1
+    W3 --> S2
+    H7 --> S2
+    G --> S3
 ```
 
----
 
-## 3. System Context
+```mermaid
+flowchart LR
+    subgraph PHASE["Execution Phases"]
+        P1["1. Validation"]
+        P2["2. Quantity Check"]
+        P3["3. Scraping"]
+        P4["4. Analysis"]
+        P5["5. Writing"]
+        P6["6. Reflection"]
+        P7["7. Saving"]
+        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
+    end
 
-### 3.1 Actors
+    subgraph PROGRESS["Real-time Progress"]
+        EV1["Progress Event 1"]
+        EV2["Progress Event 2"]
+        EV3["Progress Event 3"]
+        EV4["Progress Event 4"]
+        EV5["Progress Event 5"]
+        EV6["Progress Event 6"]
+        EV7["Progress Event 7"]
+    end
 
-| Actor | Description | Interaction |
-|-------|-------------|-------------|
-| **SEO Manager** | Người dùng cuối, cung cấp danh sách URL | Gửi batch URL, nhận báo cáo |
-| **LLM Engine** | Gemma-4-E2B  | Tạo content, phân tích, reflection |
-| **External Web** | Các website đối thủ | Được crawl qua HTTP |
-| **File System** | Lưu trữ local | Lưu queue, report, article |
+    P1 -.-> EV1
+    P2 -.-> EV2
+    P3 -.-> EV3
+    P4 -.-> EV4
+    P5 -.-> EV5
+    P6 -.-> EV6
+    P7 -.-> EV7
 
-### 3.2 Use Cases
-
-```
-UC-01: Batch URL Dispatch
-  Actor: SEO Manager
-  Flow: Nhận 100 URL → Validate → Deduplicate → Chunk → Queue
-
-UC-02: Competitor Content Extraction
-  Actor: WebScraper Worker
-  Flow: Fetch URL → Extract clean text → Remove noise → Save raw
-
-UC-03: SEO Intelligence Analysis
-  Actor: SEOAnalyzer Worker
-  Flow: Đọc raw text → Keyword frequency → Density → Readability → Report
-
-UC-04: Original Content Generation
-  Actor: ContentWriter Worker
-  Flow: Đọc analysis → Plan structure → Write article → Enforce SEO rules
-
-UC-05: Quality Validation
-  Actor: QualityValidator Worker
-  Flow: Đọc article → Heuristic check → LLM reflection → PASS/FAIL
-
-UC-06: Auto-Correction Loop
-  Actor: SupervisorOrchestrator
-  Flow: Nhận FAIL → Build rewrite prompt → Gửi Writer → Re-validate
-
-UC-07: Final Report Aggregation
-  Actor: SupervisorOrchestrator
-  Flow: Collect all URL results → Stats → Export Markdown
+    EV1 --> UI["UI Render"]
+    EV2 --> UI
+    EV3 --> UI
+    EV4 --> UI
+    EV5 --> UI
+    EV6 --> UI
+    EV7 --> UI
 ```
 
----
 
-## 4. Component Overview
+```mermaid
+classDiagram
+    class IStreamingAgentOrchestrator {
+        <<interface>>
+        +RunAsync()
+        +RunStreamingAsync()
+    }
 
-### 4.1 Core Components
+    class SEOCrawlSupervisorOrchestrator {
+        -AgentTeam team
+        -SEOCrawlSupervisorOptions options
+        -UrlProcessingHandler pipelineHead
+        -Dictionary reflectionCache
+        -Dictionary scrapedEntityCache
+        -HashSet attemptedSynthesis
+        +BuildPipeline()
+        +RunAsync()
+        +RunStreamingAsync()
+        -FormatProgressLog()
+        -ExtractScore()
+    }
 
-| Component | Type | Responsibility | File |
-|-----------|------|----------------|------|
-| `SEOCrawlSupervisorOrchestrator` | Orchestrator | Điều phối toàn pipeline, reflection, re-plan | `SEOCrawlSupervisorOrchestrator.cs` |
-| `SEOCrawlContentTeamFactory` | Factory | Tạo AgentTeam với 5 workers + supervisor | `SEOCrawlContentTeamFactory.cs` |
-| `AgentTeam` | Container | Quản lý workers, messenger, supervisor | Framework |
-| `SpecialistAgent` | Worker | Thực thi task cụ thể với ReAct | Framework |
-| `ReflectiveReActStreamingOrchestrator` | Sub-Orchestrator | ReAct streaming cho từng worker | Framework |
+    class UrlProcessingHandler {
+        <<abstract>>
+        #ILogger logger
+        #UrlProcessingHandler next
+        +Progress
+        +SetNext()
+        +HandleAsync()
+        #OnProgress()
+        #StartPhase()
+        #CompletePhase()
+        #CreateTimeoutCts()
+        #CreateDynamicTimeoutCts()
+    }
 
-### 4.2 Tool Components
+    class UrlValidationHandler {
+        +HandleAsync()
+    }
 
-| Tool | Category | Key Capability | File |
-|------|----------|----------------|------|
-| `WebScraperTool` | Crawl | HTTP fetch, retry, noise removal | `WebScraperTool.cs` |
-| `DirectRequestTool` | Crawl | Session-aware, cookie jar, download | `DirectRequestTool.cs` |
-| `SEOAnalyzerTool` | Analysis | Keyword density, readability, headings | `SEOAnalyzerTool.cs` |
-| `MathOperationTool` | Analysis | Statistics, expression evaluation | `MathOperationTool.cs` |
-| `FactorialCalculationTool` | Analysis | Combinatorics (BigInteger) | `FactorialCalculationTool.cs` |
-| `ContentWriterTool` | Generation | SEO article with mode/tone/structure | `ContentWriterTool.cs` |
-| `DataConverterTool` | Utility | JSON/CSV/XML/Markdown/Plain text | `DataConverterTool.cs` |
-| `DirectQueryTool` | Utility | Stateless HTTP API client | `DirectQueryTool.cs` |
-| `RunCommandTool` | Utility | Shell command execution | `RunCommandTool.cs` |
+    class UrlQuantityValidationHandler {
+        +HandleAsync()
+    }
 
----
+    class ScrapingHandler {
+        +HandleAsync()
+        #BuildScraperPrompt()
+        #PrecalculateTimeouts()
+    }
 
-## 5. Data Flow
+    class AnalysisHandler {
+        +HandleAsync()
+        #BuildAnalysisPrompt()
+        -ExtractScoreFromAnalysis()
+    }
 
-### 5.1 Per-URL Processing Flow (Sequence)
+    class ContentWritingHandler {
+        +HandleAsync()
+        #BuildWritePrompt()
+    }
 
+    class ReflectionHandler {
+        -ReflectionEngine engine
+        +HandleAsync()
+        -PerformRewriteAsync()
+        -OnEngineProgress()
+    }
+
+    class ReflectionEngine {
+        -ILogger logger
+        -SEOCrawlSupervisorOptions options
+        +Progress
+        +RunReflectionAsync()
+        -CheckDuplicateWordsAsync()
+        -CheckTemplatePhrasesAsync()
+        -CheckKeywordDensityAsync()
+        -CheckReadabilityAsync()
+        -CheckLLMAsync()
+    }
+
+    class SavingHandler {
+        +HandleAsync()
+    }
+
+    class TimeoutCalculator {
+        <<static>>
+        +CalculateTimeout()
+        +CalculateByContentLength()
+        +CalculateAllTimeouts()
+    }
+
+    class LoggingFactory {
+        <<static>>
+        +CreateLogger()
+        +DisposeAll()
+    }
+
+    IStreamingAgentOrchestrator <|.. SEOCrawlSupervisorOrchestrator
+    SEOCrawlSupervisorOrchestrator --> UrlProcessingHandler : uses
+    UrlProcessingHandler <|-- UrlValidationHandler
+    UrlProcessingHandler <|-- UrlQuantityValidationHandler
+    UrlProcessingHandler <|-- ScrapingHandler
+    UrlProcessingHandler <|-- AnalysisHandler
+    UrlProcessingHandler <|-- ContentWritingHandler
+    UrlProcessingHandler <|-- ReflectionHandler
+    UrlProcessingHandler <|-- SavingHandler
+    ReflectionHandler --> ReflectionEngine : uses
+    SEOCrawlSupervisorOrchestrator --> TimeoutCalculator : uses
+    UrlProcessingHandler --> TimeoutCalculator : uses
+    UrlProcessingHandler --> LoggingFactory : uses
 ```
-Step  Actor              Action                              Output
-───   ─────────────────  ──────────────────────────────────  ─────────────────────────
-1     Supervisor         Parse input, detect URL #N          url, index, total
-2     Supervisor         PlanWorkflow()                      [Dispatcher→Scraper→...]
-3     Supervisor         Send task to WebScraper             taskPrompt
-4     WebScraper         Execute WebScraperTool(url)         rawContent (15K chars)
-5     WebScraper         Return result to Supervisor         resultText
-6     Supervisor         Send task to SEOAnalyzer            rawContent + context
-7     SEOAnalyzer        Execute SEOAnalyzerTool(text)       analysisReport (JSON)
-8     SEOAnalyzer        Execute MathOperationTool(stats)    calculatedMetrics
-9     SEOAnalyzer        Return result to Supervisor         combinedReport
-10    Supervisor         Send task to ContentWriter          analysis + reference
-11    ContentWriter      Execute ContentWriterTool(args)     draftArticle (Markdown)
-12    ContentWriter      Return result to Supervisor         articleText
-13    Supervisor         Trigger Reflection Engine           SEOReflectionResult
-14    Reflection         Heuristic checks:                   Passed/Failed
-                       - Duplicate words (>5x)
-                       - Keyword density (1%-5%)
-                       - Readability (>30 Flesch)
-15    Reflection         LLM-based quality check             PASS/FAIL + reason
-16    Supervisor         If FAIL → BuildRewritePrompt()      rewritePrompt
-17    ContentWriter      Execute rewrite                     revisedArticle
-18    Supervisor         Re-run Reflection (max 3 rounds)    finalQuality
-19    Supervisor         Store result in SEOUrlResult        success/fail + content
-20    Supervisor         Log completion                      [URL #N/100] DONE
-```
 
-### 5.2 Batch Aggregation Flow
 
-```
-After all URLs processed:
-  Supervisor → Collect all SEOUrlResult
-           → Calculate stats: successCount, failCount
-           → BuildFinalReportAsync()
-           → Generate Markdown report with:
-               - Summary table (PASS/FAIL per URL)
-               - Failure reasons
-               - Article previews (500 chars)
-               - Full articles section
-           → Yield FinalAnswer to user
-```
+# 3. Detail Design (DD)
 
-### 5.3 Sequence Diagrams (Mermaid)
+3.1 Chain of Responsibility Implementation
 
-#### 5.3.1 Single URL Processing Flow
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor User as SEO Manager
-    participant SUP as SupervisorOrchestrator
-    participant DIS as URLBatchDispatcher
-    participant SCR as WebScraper
-    participant ANA as SEOAnalyzer
-    participant WRI as ContentWriter
-    participant REF as ReflectionEngine
-    participant LLM as LlamaCpp API
+    participant O as Orchestrator
+    participant V as Validation
+    participant Q as Quantity
+    participant S as Scraping
+    participant A as Analysis
+    participant W as Writing
+    participant R as Reflection
+    participant SV as Saving
 
-    User->>SUP: Submit batch (100 URLs)
-    SUP->>DIS: Dispatch URL #N
-    DIS-->>SUP: URL validated & queued
-
-    SUP->>SCR: Task: Scrape(url)
-    SCR->>LLM: (if needed) Parse/extract
-    SCR-->>SUP: rawContent (title, meta, body)
-
-    SUP->>ANA: Task: Analyze(rawContent)
-    ANA->>LLM: Keyword extraction, readability
-    ANA-->>SUP: analysisReport (JSON)
-
-    SUP->>WRI: Task: Write(analysisReport)
-    WRI->>LLM: Generate article
-    WRI-->>SUP: draftArticle (Markdown)
-
-    SUP->>REF: PerformSEOReflection(draftArticle)
-    REF->>REF: Heuristic checks (L1-L3)
-    REF->>LLM: LLM quality grading (L4)
-    REF-->>SUP: SEOReflectionResult (PASS/FAIL)
-
-    alt PASS
-        SUP->>SUP: Store SEOUrlResult
-    else FAIL (round < 3)
-        SUP->>SUP: BuildRewritePrompt(issues)
-        SUP->>WRI: Task: Rewrite(rewritePrompt)
-        WRI->>LLM: Regenerate article
-        WRI-->>SUP: revisedArticle
-        SUP->>REF: Re-run Reflection
-        REF-->>SUP: Updated result
-    else FAIL (round = 3)
-        SUP->>SUP: Mark URL FAILED, record reason
-    end
-
-    SUP-->>User: Yield progress log per step
+    O->>V: HandleAsync(context)
+    activate V
+    V->>V: Validate URL
+    V-->>O: Progress Event
+    V->>Q: HandleAsync(context)
+    activate Q
+    Q->>Q: Check URL count
+    Q-->>O: Progress Event
+    Q->>S: HandleAsync(context)
+    activate S
+    S->>S: Call Scraper Worker
+    S->>S: Extract Content Length
+    S->>S: Precalculate Timeouts
+    S-->>O: Progress Event
+    S->>A: HandleAsync(context)
+    activate A
+    A->>A: Call Analyzer Worker
+    A-->>O: Progress Event
+    A->>W: HandleAsync(context)
+    activate W
+    W->>W: Call Writer Worker
+    W-->>O: Progress Event
+    W->>R: HandleAsync(context)
+    activate R
+    R->>R: Run Reflection Engine
+    R->>R: Check 4 Layers
+    R-->>O: Progress Event
+    R->>SV: HandleAsync(context)
+    activate SV
+    SV->>SV: Save Article
+    SV-->>O: Progress Event
+    deactivate SV
+    deactivate R
+    deactivate W
+    deactivate A
+    deactivate S
+    deactivate Q
+    deactivate V
 ```
 
-#### 5.3.2 Reflection & Re-plan Loop (Detail)
+
+```mermaid
+flowchart TD
+    subgraph INPUT["Input Parameters"]
+        CL["Content Length"]
+        PL["Prompt Length"]
+        RL["Response Length"]
+    end
+
+    subgraph CONFIG["Configuration"]
+        TPS["Tokens Per Second"]
+        SBM["Safety Buffer Multiplier"]
+        MIN["Min Timeout"]
+        MAX["Max Timeout"]
+        CPT["Chars Per Token"]
+        HM["Handler Multiplier"]
+    end
+
+    subgraph CALC["Calculation"]
+        TE["Total Chars = PL + RL"]
+        ET["Estimated Tokens = TE / CPT"]
+        BT["Base Time = ET / TPS"]
+        ST["Safe Time = BT * HM * SBM"]
+        FT["Final Time = Clamp(ST, MIN, MAX)"]
+    end
+
+    PL --> TE
+    RL --> TE
+    TE --> ET
+    CPT --> ET
+    ET --> BT
+    TPS --> BT
+    BT --> ST
+    HM --> ST
+    SBM --> ST
+    ST --> FT
+    MIN --> FT
+    MAX --> FT
+    FT --> TO["Timeout"]
+
+    CL -.-> TE
+```
+
+
+```mermaid
+flowchart TD
+    subgraph INPUT["Input"]
+        C["Article Content"]
+        U["Source URL"]
+    end
+
+    subgraph L1["Layer 1: Duplicate Words"]
+        L1I["Split into words"]
+        L1C["Count frequency"]
+        L1D["Detect >3 occurrences"]
+        L1R["Pass if none found"]
+        L1I --> L1C --> L1D --> L1R
+    end
+
+    subgraph L1B["Layer 1B: Template Phrases"]
+        L1BI["Detect common templates"]
+        L1BC["Count occurrences"]
+        L1BD["Detect >=2 occurrences"]
+        L1BR["Pass if none found"]
+        L1BI --> L1BC --> L1BD --> L1BR
+    end
+
+    subgraph L2["Layer 2: Keyword Density"]
+        L2I["Extract keywords"]
+        L2C["Calculate density"]
+        L2D["Check 1.2%-3.5% range"]
+        L2R["Pass if in range"]
+        L2I --> L2C --> L2D --> L2R
+    end
+
+    subgraph L3["Layer 3: Readability"]
+        L3I["Count sentences"]
+        L3C["Average length"]
+        L3D["Detect long sentences"]
+        L3R["Pass if score >= 60"]
+        L3I --> L3C --> L3D --> L3R
+    end
+
+    subgraph L4["Layer 4: LLM Reflection"]
+        L4I["Build prompt"]
+        L4C["Call LLM"]
+        L4D["JSON output"]
+        L4R["Pass if all good"]
+        L4I --> L4C --> L4D --> L4R
+    end
+
+    subgraph OUTPUT["Output"]
+        SUM["Summary Result"]
+        ISS["Issues List"]
+        SUG["Suggestions List"]
+        SCR["Score Calculation"]
+    end
+
+    C --> L1I
+    C --> L1BI
+    C --> L2I
+    C --> L3I
+    C --> L4I
+    U --> L4I
+
+    L1R --> SUM
+    L1BR --> SUM
+    L2R --> SUM
+    L3R --> SUM
+    L4R --> SUM
+
+    L1D --> ISS
+    L1BD --> ISS
+    L2D --> ISS
+    L3D --> ISS
+    L4D --> ISS
+
+    ISS --> SUG
+    SUG --> SCR
+    SUM --> SCR
+```
+
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant SUP as SupervisorOrchestrator
-    participant REF as ReflectionEngine
-    participant WRI as ContentWriter
-    participant LLM as LlamaCpp API
+    participant H as Handler
+    participant E as Event
+    participant O as Orchestrator
+    participant C as Channel
+    participant UI as UI Renderer
 
-    SUP->>REF: PerformSEOReflection(article, url)
+    H->>H: Process phase
+    H->>E: OnProgress()
+    E->>O: Progress Event
+    O->>O: FormatProgressLog()
+    O->>C: Write to Channel
+    C->>UI: Read from Channel
+    UI->>UI: Render Markdown
 
-    rect rgb(230, 245, 255)
-        Note over REF: Layer 1-3: Heuristic
-        REF->>REF: Detect duplicate words (>5x)
-        REF->>REF: Check keyword density (1%-5%)
-        REF->>REF: Calculate Flesch score (>=30)
-    end
+    Note over H,UI: For each handler phase
 
-    rect rgb(255, 245, 230)
-        Note over REF: Layer 4: LLM Grading
-        REF->>LLM: Prompt: Evaluate quality
-        LLM-->>REF: PASS/FAIL + reason
-    end
-
-    REF-->>SUP: SEOReflectionResult
-
-    alt All Passed
-        SUP->>SUP: Finalize result
-    else Has Issues
-        loop Max 3 Correction Rounds
-            SUP->>SUP: BuildRewritePrompt(issues)
-            SUP->>WRI: Execute rewrite
-            WRI->>LLM: Generate revised content
-            WRI-->>SUP: revisedArticle
-            SUP->>REF: Re-run reflection
-            REF-->>SUP: New result
-        end
-    end
+    H->>H: Complete phase
+    H->>E: OnProgress(isComplete=true)
+    E->>O: Progress Event
+    O->>O: FormatProgressLog()
+    O->>C: Write to Channel
+    C->>UI: Read from Channel
+    UI->>UI: Render completion
 ```
 
-#### 5.3.3 Batch Aggregation Flow
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User as SEO Manager
-    participant SUP as SupervisorOrchestrator
-    participant FS as File System
-
-    loop For each URL in batch
-        SUP->>SUP: ProcessUrlAsync()
-        SUP->>FS: Save SEOUrlResult (raw, analysis, article)
+flowchart TD
+    subgraph INPUT["Input Phase"]
+        A["User Input"] --> B["URL Parser"]
+        B --> C["URL List"]
     end
 
-    SUP->>SUP: Collect all SEOUrlResult
-    SUP->>SUP: Calculate stats (success/fail counts)
-    SUP->>SUP: BuildFinalReportAsync()
-    SUP->>FS: Write final_report.md
-    SUP-->>User: Yield FinalAnswer (Markdown report)
+    subgraph CONTEXT["Context Initialization"]
+        C --> D["Create UrlProcessingContext"]
+        D --> E["Initialize Dictionaries"]
+        D --> F["Set Options"]
+        D --> G["Set Cancellation Token"]
+    end
+
+    subgraph PIPE["Pipeline Processing"]
+        E --> H1["Validation"]
+        H1 -->|Pass| H2["Quantity Check"]
+        H2 -->|Pass| H3["Scraping"]
+        H3 -->|Content| H4["Analysis"]
+        H4 -->|Report| H5["Writing"]
+        H5 -->|Article| H6["Reflection"]
+        H6 -->|Quality| H7["Saving"]
+    end
+
+    subgraph OUTPUT["Output Phase"]
+        H7 --> I1["WorkerOutputs"]
+        H7 --> I2["PhaseTimings"]
+        H7 --> I3["SEOUrlResult"]
+        I1 --> J1["JSON Data"]
+        I2 --> J2["Markdown Report"]
+        I3 --> J3["Final Result"]
+    end
+
+    subgraph PROGRESS["Real-time Progress"]
+        H1 -.-> K1["Progress Event"]
+        H2 -.-> K2["Progress Event"]
+        H3 -.-> K3["Progress Event"]
+        H4 -.-> K4["Progress Event"]
+        H5 -.-> K5["Progress Event"]
+        H6 -.-> K6["Progress Event"]
+        H7 -.-> K7["Progress Event"]
+        K1 --> L["Channel"]
+        K2 --> L
+        K3 --> L
+        K4 --> L
+        K5 --> L
+        K6 --> L
+        K7 --> L
+        L --> M["UI Render"]
+    end
 ```
 
-#### 5.3.4 Auto-Tool-Synthesis Flow
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant SUP as SupervisorOrchestrator
-    participant WRI as ContentWriter
-    participant REG as ToolRegistry
-    participant SYN as ToolSynthesizer
-    participant COMP as Roslyn Compiler
+flowchart TD
+    subgraph SOURCES["Score Sources"]
+        A["Reflection Result"]
+        B["Analysis Output"]
+        C["Content Length"]
+        D["Writer Output"]
+    end
 
-    SUP->>WRI: Execute task
-    WRI-->>SUP: Error: "Tool X not found"
+    subgraph EXTRACT["Extract Score"]
+        A --> E1["ExtractScoreFromReflection"]
+        B --> E2["ExtractScoreFromAnalysis"]
+        C --> E3["ExtractScoreFromContentLength"]
+        D --> E4["ExtractScoreFromWriter"]
+    end
 
-    SUP->>REG: Check if tool exists
-    REG-->>SUP: Not registered
+    subgraph WEIGHTS["Weighting"]
+        E1 --> W1["Weight: 0.4"]
+        E2 --> W2["Weight: 0.3"]
+        E3 --> W3["Weight: 0.1"]
+        E4 --> W4["Weight: 0.2"]
+    end
 
-    alt AutoToolSynthesis ENABLED
-        SUP->>SYN: ShouldSynthesizeAsync("X")
-        SYN-->>SUP: Approved
-        SUP->>SYN: SynthesizeAsync("X")
-        SYN->>SYN: Generate C# code + JsonSchema
-        SYN-->>SUP: SynthesizedTool
-        SUP->>COMP: Compile & register
-        COMP-->>REG: Register SynthesizedToolExecutor
-        SUP->>WRI: Retry with new tool
-        WRI-->>SUP: Success
-    else Disabled
-        SUP->>SUP: Mark task FAILED
+    subgraph COMBINE["Combine"]
+        W1 --> C1["Weighted Average"]
+        W2 --> C1
+        W3 --> C1
+        W4 --> C1
+        C1 --> F["Final Score"]
+    end
+
+    subgraph THRESHOLD["Threshold"]
+        F --> T{"Score >= 70?"}
+        T -->|Yes| P["PASS - OK"]
+        T -->|No| F2["FAIL"]
     end
 ```
 
----
 
-## 6. Technology Stack
+# 4. Component Details
 
-| Layer | Technology | Version | Purpose |
-|-------|-----------|---------|---------|
-| **Runtime** | .NET | 10 | Core framework |
-| **LLM** | Gemma-4-E2B (GGUF) | latest | Content generation, reflection |
-| **LLM Binding** | LlamaCppSharp | 0.x | Local model inference |
-| **HTTP** | HttpClient | Built-in | Web scraping, API calls |
-| **JSON** | System.Text.Json | Built-in | Serialization, schema |
-| **XML** | System.Xml.Linq | Built-in | XML conversion |
-| **Regex** | System.Text.RegularExpressions | Built-in | Text extraction, parsing |
-| **Math** | System.Numerics.BigInteger | Built-in | Large number factorial |
-| **Process** | System.Diagnostics.Process | Built-in | Shell command execution |
-| **Logging** | Microsoft.Extensions.Logging | Built-in | Structured logging |
+4.1 SEOCrawlSupervisorOptions
 
----
-
-## 7. Detail Design
-
-### 7.1 Orchestrator Layer
-
-#### 7.1.1 SEOCrawlSupervisorOrchestrator
 
 ```csharp
-public sealed class SEOCrawlSupervisorOrchestrator : IStreamingAgentOrchestrator
-```
-
-**Responsibilities:**
-- Parse và validate danh sách URL từ user input
-- Lặp tuần tự qua từng URL (sequential để tránh rate limit)
-- Điều phối workflow: Crawl → Analyze → Write → Validate
-- Thực hiện **Reflection + Re-plan loop** cho ContentWriter output
-- Tổng hợp báo cáo cuối cùng
-
-**Key Methods:**
-
-| Method | Return Type | Description |
-|--------|-------------|-------------|
-| `RunStreamingAsync` | `IAsyncEnumerable<AgentStepUpdate>` | Entry point, yield từng log step |
-| `ProcessUrlAsync` | `Task<(SEOUrlResult, List<AgentStepUpdate>)>` | Xử lý 1 URL, trả về kết quả + updates |
-| `PerformSEOReflectionAsync` | `Task<SEOReflectionResult>` | 4 tầng kiểm tra chất lượng |
-| `BuildRewritePrompt` | `string` | Tạo prompt yêu cầu rewrite khi FAIL |
-| `BuildFinalReportAsync` | `Task<string>` | Tổng hợp Markdown report |
-| `RunWorkerWithAutoSynthesisAsync` | `Task<(string, List<string>)>` | Chạy worker + auto-synthesize tool nếu thiếu |
-
-**Reflection Engine (4 Layers):**
-
-```
-Layer 1: Heuristic - Duplicate Word Detection
-  └─ Regex: \b\w+\b, filter length>3, threshold>5 occurrences
-
-Layer 2: Heuristic - Keyword Density
-  └─ Top keyword count / total words
-  └─ Pass if 1% <= density <= 5%
-
-Layer 3: Heuristic - Readability (Flesch Reading Ease)
-  └─ Formula: 206.835 - (1.015 * ASL) - (84.6 * ASW)
-  └─ Pass if score >= 30
-
-Layer 4: LLM-based Reflection
-  └─ Prompt: Evaluate keyword stuffing, heading structure, tone, accuracy
-  └─ Output: PASS/FAIL + one-line reason
-```
-
-**Re-plan Strategy:**
-```
-if (!reflectionResult.Passed):
-    correctionRound = 0
-    while (!passed && correctionRound < MaxCorrectionRounds):
-        BuildRewritePrompt(worker, original, reflectionIssues, url)
-        rewriteResult = RunWorkerToStringAsync(worker, rewritePrompt)
-        reflectionResult = PerformSEOReflectionAsync(rewriteResult, url)
-        correctionRound++
-
-    if (!passed):
-        Mark URL as FAILED, record FailureReason
-```
-
-### 7.2 Agent Team
-
-#### 7.2.1 Team Composition
-
-```
-AgentTeam: "SEOCrawlContentTeam"
-├── Supervisor: SEOCrawlSupervisor (SEOCrawlSupervisorOrchestrator)
-├── Workers:
-│   ├── [0] URLBatchDispatcher  (Role: Dispatcher)
-│   ├── [1] WebScraper          (Role: Scraper)
-│   ├── [2] SEOAnalyzer         (Role: Analyzer)
-│   ├── [3] ContentWriter       (Role: Writer)
-│   └── [4] QualityValidator    (Role: Validator)
-└── Messenger: InMemoryAgentMessenger
-```
-
-#### 7.2.2 Worker Specifications
-
-**URLBatchDispatcher**
-- **Tools:** ReadFile, WriteFile, DataConverter
-- **Input:** File path chứa danh sách URL hoặc raw text
-- **Output:** Structured batch queue (JSON)
-- **Logic:** Validate URL format, deduplicate, chunk
-
-**WebScraper**
-- **Tools:** WebScraper, DirectRequest, ReadFile, WriteFile
-- **Input:** Single URL
-- **Output:** Structured extraction (title, meta, headings, body, word_count)
-- **Logic:** Ưu tiên WebScraperTool, fallback DirectRequestTool nếu cần session
-
-**SEOAnalyzer**
-- **Tools:** SEOAnalyzer, MathOperation, DataConverter, ReadFile, WriteFile
-- **Input:** Raw scraped text
-- **Output:** Analysis report JSON (keywords, density, readability, gaps)
-- **Logic:** Dùng SEOAnalyzerTool cho metrics, MathOperationTool cho tính toán nâng cao
-
-**ContentWriter**
-- **Tools:** ContentWriter, DataConverter, ReadFile, WriteFile
-- **Input:** Analysis report + reference content
-- **Output:** Original SEO article (Markdown)
-- **Logic:** Mode (new/rewrite/expand), Tone (seo/professional/friendly/persuasive), Structure hint
-
-**QualityValidator**
-- **Tools:** SEOAnalyzer, MathOperation, ReadFile, WriteFile
-- **Input:** Written article + original analysis
-- **Output:** Validation report JSON (PASS/FAIL per check)
-- **Logic:** Re-run analysis tools để verify, không dựa vào ước tính
-
-### 7.3 Tool Registry
-
-#### 7.3.1 Tool Registration Pattern
-
-```csharp
-var tools = new ToolRegistry();
-tools.Register(new WebScraperTool(loggerFactory.CreateLogger<WebScraperTool>()));
-tools.Register(new SEOAnalyzerTool(loggerFactory.CreateLogger<SEOAnalyzerTool>()));
-tools.Register(new ContentWriterTool(loggerFactory.CreateLogger<ContentWriterTool>()));
-tools.Register(new DataConverterTool(loggerFactory.CreateLogger<DataConverterTool>()));
-tools.Register(new FactorialCalculationTool(loggerFactory.CreateLogger<FactorialCalculationTool>()));
-tools.Register(new DirectQueryTool(loggerFactory.CreateLogger<DirectQueryTool>()));
-tools.Register(new MathOperationTool(loggerFactory.CreateLogger<MathOperationTool>()));
-tools.Register(new RunCommandTool(loggerFactory.CreateLogger<RunCommandTool>()));
-tools.Register(new DirectRequestTool(loggerFactory.CreateLogger<DirectRequestTool>()));
-```
-
-#### 7.3.2 Tool Interface Contract
-
-```csharp
-public interface IToolExecutor
+public class SEOCrawlSupervisorOptions
 {
-    string FunctionName { get; }
-    Task<ToolInvocationResult> ExecuteAsync(ToolCall toolCall, CancellationToken ct);
+    // === Core Settings ===
+    public bool EnableFinalReflection { get; set; } = true;
+    public bool EnableAutoToolSynthesis { get; set; } = false;
+    public bool SaveArticlesToFiles { get; set; } = true;
+    public bool SaveFinalReport { get; set; } = true;
+    public bool SkipL4IfHeuristicPass { get; set; } = true;
+    
+    // === Timeout Settings ===
+    public int BatchTotalTimeoutMinutes { get; set; } = 120;
+    public int? UrlTotalTimeoutMinutes { get; set; } = 15;
+    public int MaxCorrectionRounds { get; set; } = 1;
+    public int? WorkerTimeoutSeconds { get; set; } = 120;
+    public int? AgentTimeoutSeconds { get; set; } = 60;
+    
+    // === LLM Token Settings ===
+    public LlmConfig LlmConfig { get; set; } = new();
+    
+    // === Output Settings ===
+    public string OutputDirectory { get; set; } = "./output";
+    public int? MaxUrls { get; set; } = 10;
+    
+    // === Handler Multipliers ===
+    public Dictionary<string, double> HandlerTokenMultipliers { get; set; } = new()
+    {
+        ["Scrape"] = 0.5,
+        ["Analyze"] = 1.0,
+        ["Write"] = 2.5,
+        ["Reflect"] = 1.8,
+        ["Save"] = 0.3
+    };
 }
 
-public interface IToolDescriptor
+public class LlmConfig
 {
-    ToolDefinition GetToolDefinition();
+    public double TokensPerSecond { get; set; } = 50;
+    public double SafetyBufferMultiplier { get; set; } = 1.5;
+    public int MinTimeoutSeconds { get; set; } = 30;
+    public int MaxTimeoutSeconds { get; set; } = 900;
+    public double CharsPerToken { get; set; } = 4.0;
 }
-
-public class ToolInvocationResult
-{
-    public string FunctionName { get; set; } = "";
-    public string Result { get; set; } = "";
-    public bool IsError { get; set; }
-    public string? ErrorMessage { get; set; }
-}
+4.2 ProgressEventArgs
 ```
 
-### 7.4 Reflection Engine
-
-#### 7.4.1 SEOReflectionResult Model
 
 ```csharp
-public class SEOReflectionResult
+public class ProgressEventArgs : EventArgs
 {
+    public string Phase { get; set; } = string.Empty;
+    public int Step { get; set; }
+    public int TotalSteps { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public bool IsComplete { get; set; }
+    public DateTime Timestamp { get; set; }
+    public Exception? Error { get; set; }
+    public Dictionary<string, object>? Data { get; set; }
+    public int PercentComplete { get; set; }
+    public string? Status { get; set; }
+    public string? Detail { get; set; }
+    public int Score { get; set; }
+}
+4.3 ReflectionProgressEventArgs
+```
+
+
+```csharp
+public class ReflectionProgressEventArgs : EventArgs
+{
+    public string LayerName { get; set; } = string.Empty;
+    public int LayerIndex { get; set; }
+    public int TotalLayers { get; set; }
     public bool Passed { get; set; }
+    public string Detail { get; set; } = string.Empty;
+    public double ElapsedMs { get; set; }
+    public bool IsComplete { get; set; }
+    public bool AllPassed { get; set; }
     public List<string> Issues { get; set; } = new();
     public List<string> Suggestions { get; set; } = new();
 }
 ```
 
-#### 7.4.2 Reflection Decision Matrix
 
-| Check | Threshold | Action on Fail |
-|-------|-----------|----------------|
-| Duplicate words | >5 occurrences of same word (length>3) | Yêu cầu dùng synonym |
-| Keyword density | <1% or >5% | Yêu cầu điều chỉnh tần suất |
-| Readability (Flesch) | <30 | Yêu cầu rút ngắn cau, đơn giản từ vựng |
-| LLM quality flag | FAIL | Yêu cầu rewrite toàn bộ |
+# 5. API Reference
 
-### 7.5 Auto-Tool-Synthesis
+5.1 Public Interface
 
-#### 7.5.1 Activation Conditions
-
-```
-IF (worker execution throws Exception) OR
-   (output contains "I need a X tool") OR
-   (output contains "Error: tool not found")
-THEN:
-   IF (AutoToolSynthesis ENABLED) AND
-      (toolSynthesizer != null) AND
-      (dynamicRegistry != null) AND
-      (tool not attempted before)
-   THEN:
-      DetectMissingToolName() → Extract tool name
-      toolSynthesizer.ShouldSynthesizeAsync() → Decision
-      toolSynthesizer.SynthesizeAsync() → Generate C# code
-      TryRegisterSynthesizedTool() → Compile/Register
-      Retry worker execution
-```
-
-#### 7.5.2 SynthesizedToolExecutor
 
 ```csharp
-private sealed class SynthesizedToolExecutor : IToolExecutor, IToolDescriptor
-{
-    // Constructor nhận SynthesizedTool + ILogger
-    // GetToolDefinition(): Parse JsonSchema từ SynthesizedTool.JsonSchema
-    // ExecuteAsync(): Ưu tiên ExecuteDelegate, fallback placeholder
-}
-```
-
----
-
-## 8. Data Models
-
-### 8.1 Core Models
-
-```csharp
-// Kết quả xử lý 1 URL
-public class SEOUrlResult
-{
-    public string Url { get; set; } = "";
-    public int Index { get; set; }
-    public int Total { get; set; }
-    public Dictionary<string, string> WorkerOutputs { get; set; } = new();
-    public bool Success { get; set; }
-    public string? FailureReason { get; set; }
-    public int FinalStep { get; set; }
-}
-
-// Cấu hình Supervisor
-public class SEOCrawlSupervisorOptions : SupervisorOptions
-{
-    public int MaxUrlBatchSize { get; set; } = 100;
-    public bool EnableKeywordDensityCheck { get; set; } = true;
-    public bool EnableDuplicateWordCheck { get; set; } = true;
-    public bool EnableReadabilityCheck { get; set; } = true;
-    public double MinKeywordDensity { get; set; } = 0.01;
-    public double MaxKeywordDensity { get; set; } = 0.05;
-    public int MaxDuplicateWordThreshold { get; set; } = 5;
-    public double MinReadabilityScore { get; set; } = 30.0;
-    public int MaxContentLength { get; set; } = 5000;
-}
-```
-
-### 8.2 Tool Argument Models
-
-| Tool | Args Class | Key Properties |
-|------|-----------|----------------|
-| WebScraper | `ScrapeArgs` | url, max_length |
-| SEOAnalyzer | `AnalyzeArgs` | text, top_keywords |
-| ContentWriter | `WriteArgs` | topic, reference_text, mode, tone, target_length, primary_keyword |
-| DataConverter | `ConvertArgs` | data, from_format, to_format, delimiter, include_headers, pretty_print |
-| MathOperation | `MathArgs` | operation, operands, expression, decimal_places |
-| Factorial | `FactorialArgs` | operation, n, k, show_steps |
-| DirectQuery | `QueryArgs` | url, method, headers, query_params, body, content_type, timeout_seconds |
-| DirectRequest | `RequestArgs` | url, method, headers, body, body_type, form_data, download_path, session_id |
-| RunCommand | `CommandArgs` | command, arguments, working_directory, timeout_seconds, environment_variables, shell |
-
----
-
-## 9. Error Handling & Resilience
-
-### 9.1 Retry Strategy
-
-| Component | Max Retries | Backoff | Retryable Errors |
-|-----------|-------------|---------|------------------|
-| WebScraperTool | 3 | +10s timeout | Timeout, 5xx, 429 |
-| DirectRequestTool | 0 (session state) | N/A | Connection errors |
-| DirectQueryTool | 0 | N/A | Per request |
-| ContentWriter | 3 (reflection loop) | Immediate | Quality FAIL |
-
-### 9.2 Error Classification
-
-```
-CRITICAL (Skip URL, log error):
-  - URL không hợp lệ
-  - Web scrape fail sau 3 retries
-  - Content validation fail sau 3 correction rounds
-
-RECOVERABLE (Auto-fix):
-  - Missing tool → Auto-synthesize
-  - Keyword density slightly off → Rewrite
-  - Duplicate words → Synonym replacement
-
-WARNING (Log, continue):
-  - Meta description too long/short
-  - Readability marginal (25-30)
-  - Word count slightly below target
-```
-
-### 9.3 Circuit Breaker Pattern (Recommended)
-
-```
-For batch processing:
-  if (consecutive_failures >= 5):
-      pause_batch()
-      notify_user("Too many consecutive failures, possible rate limit or network issue")
-      wait(60s)
-      resume_batch()
-```
-
----
-
-## 10. Security Considerations
-
-### 10.1 Input Validation
-
-| Vector | Mitigation |
-|--------|------------|
-| Malicious URL | `Uri.TryCreate()` validation trước khi fetch |
-| Command Injection | `RunCommandTool` chỉ chạy trusted commands, không concat user input trực tiếp |
-| HTML/Script Injection | `WebUtility.HtmlDecode()` + regex strip `<script>` tags |
-| JSON Injection | `JsonDocument.Parse()` với try/catch, không dùng `eval` |
-
-### 10.2 Rate Limiting
-
-```
-- Sequential processing (1 URL at a time)
-- Delay 5s giữa các request (configurable)
-- User-Agent rotation (nếu cần mở rộng)
-- Respect robots.txt (nếu cần mở rộng)
-```
-
-### 10.3 Data Privacy
-
-- Không lưu cookie/session lâu dài (InMemoryAgentMessenger)
-- Không gửi dữ liệu nhạy cảm ra LLM external (nếu dùng local model)
-- File output chỉ lưu local, không upload cloud
-
----
-
-## 11. Performance & Scalability
-
-### 11.1 Time Budget (ước tính)
-
-| Phase | Time/URL | 100 URLs |
-|-------|----------|----------|
-| Crawl | 3-8s | 5-13 min |
-| Analyze | 2-4s | 3-7 min |
-| Write | 5-15s | 8-25 min |
-| Validate | 3-6s | 5-10 min |
-| Re-plan (avg 1.2 rounds) | +5-10s | +8-17 min |
-| **Total** | **~18-43s** | **~30-72 min** |
-
-### 11.2 Memory Budget
-
-| Component | Peak Memory |
-|-----------|-------------|
-| LLM Model (Gemma-4-3B GGUF) | ~3-6 GB |
-| Per URL content | ~50 KB |
-| 100 URL batch state | ~5 MB |
-| Tool Registry | ~1 MB |
-| **Total** | **~3-6 GB** |
-
-### 11.3 Scalability Roadmap
-
-```
-Phase 1 (Current): Sequential, single machine
-  └─ Throughput: ~100 URLs/hour
-
-Phase 2 (Future): Parallel workers
-  └─ Concurrent URL processing (5-10 parallel)
-  └─ Throughput: ~500-1000 URLs/hour
-  └─ Requires: Redis queue, worker pool
-
-Phase 3 (Future): Distributed
-  └─ Multi-machine agent cluster
-  └─ Shared state via distributed memory
-  └─ Throughput: ~10K+ URLs/hour
-```
-
----
-
-## 12. Deployment Architecture
-
-### 12.1 Single Machine Deployment
-
-```
-┌────────────────────────────────────────┐
-│           Host Machine                 │
-│  ┌────────────────────────────────┐    │
-│  │  .NET 10 Application            │    │
-│  │  ┌────────────────────────┐    │    │
-│  │  │ Agent Team (5 workers) │    │    │
-│  │  │ + Supervisor           │    │    │
-│  │  └────────────────────────┘    │    │
-│  │  ┌────────────────────────┐    │    │
-│  │  │ Tool Registry (9 tools)│    │    │
-│  │  └────────────────────────┘    │    │
-│  │  ┌────────────────────────┐    │    │
-│  │  │ LlamaCppSharp (GGUF)   │    │    │
-│  │  │ Model:gemma-4-E2B      │    │    │
-│  │  └────────────────────────┘    │    │
-│  └────────────────────────────────┘    │
-│  ┌────────────────────────────────┐    │
-│  │  File System (output/)         │    │
-│  │  - batch_queue.json            │    │
-│  │  - url_01_raw.txt              │    │
-│  │  - url_01_analysis.json        │    │
-│  │  - url_01_article.md           │    │
-│  │  - final_report.md             │    │
-│  └────────────────────────────────┘    │
-└────────────────────────────────────────┘
-```
-
-### 12.2 Docker Deployment (Future)
-
-```dockerfile
-FROM mcr.microsoft.com/dotnet/runtime:10.0
-COPY ./publish /app
-COPY ./models/gemma-4-E2B.gguf /models/
-ENV LLAMA_MODEL_PATH=/models/gemma-4-E2B.gguf
-WORKDIR /app
-ENTRYPOINT ["dotnet", "SEOCrawlAgent.dll"]
-```
-
----
-
-## 13. API Contract
-
-### 13.1 Orchestrator API
-
-#### 13.1.1 IStreamingAgentOrchestrator
-
-```csharp
-public interface IStreamingAgentOrchestrator
+/// <summary>
+/// Main orchestrator for SEO crawling and content generation pipeline
+/// </summary>
+public sealed class SEOCrawlSupervisorOrchestrator : IStreamingAgentOrchestrator
 {
     /// <summary>
-    /// Entry point: chạy toàn bộ pipeline và yield từng step update.
+    /// Constructor with dependency injection
     /// </summary>
-    /// <param name="input">User input (URL list hoặc file path)</param>
-    /// <param name="context">Agent context (session, memory, config)</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>Async stream of step updates</returns>
-    IAsyncEnumerable<AgentStepUpdate> RunStreamingAsync(
-        string input,
-        AgentContext context,
+    public SEOCrawlSupervisorOrchestrator(
+        AgentTeam team,
+        IReflectionEngine? reflection = null,
+        IPromptTemplateEngine? promptEngine = null,
+        SEOCrawlSupervisorOptions? options = null,
+        ILoggerFactory? loggerFactory = null,
+        DynamicToolSynthesizer? toolSynthesizer = null,
+        IDynamicToolRegistry? dynamicRegistry = null);
+
+    /// <summary>
+    /// Non-streaming execution - returns complete result set
+    /// </summary>
+    public IAsyncEnumerable<AgentStep> RunAsync(
+        string userInput,
+        AgentDefinition definition,
+        IConversationMemory memory,
+        IToolRegistry? tools,
+        ISkillRegistry? skills,
+        IReadOnlyList<IGuardrail> guardrails,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Streaming execution - returns real-time progress updates
+    /// </summary>
+    public IAsyncEnumerable<AgentStepUpdate> RunStreamingAsync(
+        string userInput,
+        AgentDefinition definition,
+        IConversationMemory memory,
+        IToolRegistry? tools,
+        ISkillRegistry? skills,
+        IReadOnlyList<IGuardrail> guardrails,
         CancellationToken ct = default);
 }
 ```
 
-**Request Model:**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `input` | `string` | Yes | Danh sách URL (newline-separated) hoặc file path |
-| `context` | `AgentContext` | Yes | Session ID, memory window, tool registry reference |
-| `ct` | `CancellationToken` | No | Hủy operation giữa chừng |
+# 6. Deployment & Configuration
 
-**Response Model (Stream):**
+6.1 Environment Variables
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `StepType` | `enum` | SYSTEM, PLANNER, REACT, REFLECTION, RESULT |
-| `Message` | `string` | Human-readable log message |
-| `Timestamp` | `DateTimeOffset` | Thời điểm phát sinh event |
-| `Metadata` | `Dictionary<string,object>` | Optional: URL index, worker name, result preview |
+| Variable | Description | Default |
+| --- | --- | --- |
+| SEO_OUTPUT_DIR | Output directory path | ./output |
+| SEO_BATCH_TIMEOUT | Total batch timeout (minutes) | 120 |
+| SEO_WORKER_TIMEOUT | Worker timeout (seconds) | 120 |
+| SEO_BASE_TIMEOUT | Base timeout per handler (seconds) | 60 |
+| SEO_MAX_TIMEOUT | Maximum timeout (seconds) | 600 |
+| SEO_AUTO_SYNTHESIS | Enable auto tool synthesis | false |
+| SEO_ENABLE_REFLECTION | Enable final reflection | true |
+| SEO_TOKENS_PER_SECOND | LLM tokens per second | 50 |
 
-#### 13.1.2 SEOCrawlSupervisorOrchestrator (Internal Methods)
+6.2 Configuration Example
 
-```csharp
-// Xử lý 1 URL đơn lẻ
-Task<(SEOUrlResult result, List<AgentStepUpdate> updates)> ProcessUrlAsync(
-    string url,
-    int index,
-    int total,
-    AgentContext context,
-    CancellationToken ct);
-
-// Reflection engine
-Task<SEOReflectionResult> PerformSEOReflectionAsync(
-    string articleContent,
-    string sourceUrl,
-    CancellationToken ct);
-
-// Build rewrite prompt từ reflection issues
-string BuildRewritePrompt(
-    SpecialistAgent writer,
-    string originalContent,
-    SEOReflectionResult reflection,
-    string url);
-
-// Tổng hợp báo cáo cuối
-Task<string> BuildFinalReportAsync(
-    List<SEOUrlResult> results,
-    TimeSpan totalDuration,
-    CancellationToken ct);
-```
-
-### 13.2 Agent Team API
-
-#### 13.2.1 AgentTeam Contract
-
-```csharp
-public class AgentTeam
-{
-    public string TeamName { get; set; }           // "SEOCrawlContentTeam"
-    public IAgent Supervisor { get; set; }          // SEOCrawlSupervisorOrchestrator
-    public List<IAgent> Workers { get; set; }       // 5 workers
-    public IAgentMessenger Messenger { get; set; }  // InMemoryAgentMessenger
-    
-    // Khởi động team với task
-    Task<TeamExecutionResult> ExecuteAsync(
-        string taskPrompt,
-        AgentContext context,
-        CancellationToken ct);
-}
-```
-
-#### 13.2.2 Worker-to-Supervisor Message Contract
-
-```csharp
-public class AgentMessage
-{
-    public string MessageId { get; set; }        // UUID v4
-    public string FromAgent { get; set; }        // Tên worker gửi
-    public string ToAgent { get; set; }          // "Supervisor" hoặc tên worker khác
-    public MessageType Type { get; set; }        // Task, Result, Error, Heartbeat
-    public string Payload { get; set; }          // JSON hoặc plain text
-    public DateTimeOffset SentAt { get; set; }
-    public int Priority { get; set; }            // 0-10, default 5
-}
-
-public enum MessageType
-{
-    Task,      // Supervisor giao task
-    Result,    // Worker trả kết quả
-    Error,     // Worker báo lỗi
-    Heartbeat, // Health check
-    Replan     // Yêu cầu re-plan từ Reflection
-}
-```
-
-### 13.3 Tool Registry API
-
-#### 13.3.1 IToolExecutor & IToolDescriptor
-
-```csharp
-public interface IToolExecutor
-{
-    string FunctionName { get; }
-    
-    /// <summary>
-    /// Thực thi tool với arguments từ LLM
-    /// </summary>
-    /// <param name="toolCall">Tên tool + parsed arguments</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>Kết quả hoặc lỗi</returns>
-    Task<ToolInvocationResult> ExecuteAsync(ToolCall toolCall, CancellationToken ct);
-}
-
-public interface IToolDescriptor
-{
-    /// <summary>
-    /// Trả về JSON Schema để LLM biết cách gọi tool
-    /// </summary>
-    ToolDefinition GetToolDefinition();
-}
-
-public class ToolInvocationResult
-{
-    public string FunctionName { get; set; } = "";
-    public string Result { get; set; } = "";
-    public bool IsError { get; set; }
-    public string? ErrorMessage { get; set; }
-    public TimeSpan ExecutionDuration { get; set; }
-    public int RetryCount { get; set; }
-}
-```
-
-#### 13.3.2 ToolRegistry Operations
-
-```csharp
-public class ToolRegistry
-{
-    // Đăng ký tool
-    void Register(IToolExecutor tool);
-    
-    // Hủy đăng ký
-    bool Unregister(string functionName);
-    
-    // Tìm tool theo tên
-    IToolExecutor? Resolve(string functionName);
-    
-    // Lấy tất cả definitions cho LLM
-    List<ToolDefinition> GetAllDefinitions();
-    
-    // Đăng ký tool động (Auto-Synthesis)
-    bool TryRegisterSynthesizedTool(SynthesizedTool tool, out string? error);
-}
-```
-
-### 13.4 Reflection Engine API
-
-#### 13.4.1 SEOReflectionResult
-
-```csharp
-public class SEOReflectionResult
-{
-    public bool Passed { get; set; }
-    public List<SEOCheckResult> Checks { get; set; } = new();
-    public List<string> Issues { get; set; } = new();
-    public List<string> Suggestions { get; set; } = new();
-    public double OverallScore { get; set; }  // 0.0 - 1.0
-    public DateTimeOffset EvaluatedAt { get; set; }
-}
-
-public class SEOCheckResult
-{
-    public string CheckName { get; set; }      // "DuplicateWords", "KeywordDensity", ...
-    public bool Passed { get; set; }
-    public double? NumericValue { get; set; }  // e.g., density = 0.025
-    public string? Threshold { get; set; }   // e.g., "1%-5%"
-    public string? Message { get; set; }
-}
-```
-
-#### 13.4.2 Reflection Request/Response
-
-```csharp
-// Request
-public class ReflectionRequest
-{
-    public string Content { get; set; }           // Article Markdown
-    public string SourceUrl { get; set; }         // URL gốc (để context)
-    public SEOCrawlSupervisorOptions Options { get; set; }
-    public List<string>? PreviousIssues { get; set; }  // Issues từ round trước
-}
-
-// Response
-public class ReflectionResponse
-{
-    public SEOReflectionResult Result { get; set; }
-    public int CorrectionRound { get; set; }      // 0 = first check
-    public TimeSpan ProcessingTime { get; set; }
-}
-```
-
-### 13.5 Data Model Contracts (JSON Schema)
-
-#### 13.5.1 SEOUrlResult Schema
 
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "SEOUrlResult",
-  "type": "object",
-  "required": ["url", "index", "total", "success"],
-  "properties": {
-    "url": { "type": "string", "format": "uri" },
-    "index": { "type": "integer", "minimum": 1 },
-    "total": { "type": "integer", "minimum": 1 },
-    "workerOutputs": {
-      "type": "object",
-      "additionalProperties": { "type": "string" },
-      "description": "Key: worker name, Value: output text"
+  "SEOCrawlSupervisorOptions": {
+    "EnableFinalReflection": true,
+    "EnableAutoToolSynthesis": false,
+    "SaveArticlesToFiles": true,
+    "SaveFinalReport": true,
+    "SkipL4IfHeuristicPass": true,
+    "BatchTotalTimeoutMinutes": 120,
+    "MaxCorrectionRounds": 1,
+    "WorkerTimeoutSeconds": 120,
+    "LlmConfig": {
+      "TokensPerSecond": 50,
+      "SafetyBufferMultiplier": 1.5,
+      "MinTimeoutSeconds": 30,
+      "MaxTimeoutSeconds": 600,
+      "CharsPerToken": 4.0
     },
-    "success": { "type": "boolean" },
-    "failureReason": { "type": ["string", "null"] },
-    "finalStep": { "type": "integer", "minimum": 0, "maximum": 20 },
-    "processingDurationMs": { "type": "integer" },
-    "correctionRoundsUsed": { "type": "integer", "minimum": 0, "maximum": 3 }
+    "OutputDirectory": "./output",
+    "MaxUrls": 10,
+    "HandlerTokenMultipliers": {
+      "Scrape": 0.5,
+      "Analyze": 1.0,
+      "Write": 2.5,
+      "Reflect": 1.8,
+      "Save": 0.3
+    }
   }
 }
 ```
 
-#### 13.5.2 Analysis Report Schema
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "SEOAnalysisReport",
-  "type": "object",
-  "required": ["url", "wordCount", "topKeywords", "readability"],
-  "properties": {
-    "url": { "type": "string" },
-    "title": { "type": "string" },
-    "metaDescription": { "type": "string" },
-    "wordCount": { "type": "integer" },
-    "topKeywords": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "word": { "type": "string" },
-          "count": { "type": "integer" },
-          "density": { "type": "number" }
-        }
-      }
-    },
-    "headings": {
-      "type": "object",
-      "properties": {
-        "h1": { "type": "array", "items": { "type": "string" } },
-        "h2": { "type": "array", "items": { "type": "string" } },
-        "h3": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "readability": {
-      "type": "object",
-      "properties": {
-        "fleschScore": { "type": "number" },
-        "avgSentenceLength": { "type": "number" },
-        "avgSyllablesPerWord": { "type": "number" }
-      }
-    },
-    "suggestions": { "type": "array", "items": { "type": "string" } }
-  }
-}
-```
+# 7. Performance & Monitoring
 
-### 13.6 Error Response Contract
+7.1 Performance Metrics
+
+| Metric | Target | Description |
+| --- | --- | --- |
+| URL Throughput | 5-10 URLs/min | URLs processed per minute |
+| Per URL Latency | 2-5 minutes | Average time per URL |
+| Success Rate | > 95% | Percentage of successful URLs |
+| Reflection Accuracy | > 85% | Accuracy of quality detection |
+| Memory Usage | < 2GB | Peak memory consumption |
+| CPU Usage | < 80% | CPU utilization during batch |
+
+7.2 Logging Levels
+
+| Level | Use Case | Example |
+| --- | --- | --- |
+| Debug | Detailed flow tracing | Worker invocation details |
+| Information | Normal operation | Phase completion, URL processed |
+| Warning | Recoverable issues | Retry attempts, timeout warnings |
+| Error | Non-recoverable | Worker crash, file write failure |
+
+
+# 8. Revision Summary
+
+8.1 Changes from v1.0.0 to v1.4.0
+
+| Component | v1.0.0 | v1.4.0 | Benefit |
+| --- | --- | --- | --- |
+| Architecture | Single monolithic loop | Chain of Responsibility with 7 handlers | Separation of concerns, easier maintenance |
+| Progress | Manual yield updates | Event-driven with Channels | Unified streaming, better UI experience |
+| Timeout | Fixed values | Dynamic token-based calculation | Adaptive, prevents premature timeout |
+| Reflection | Embedded in orchestrator | Dedicated ReflectionEngine with 4 layers | Reusable, testable, extensible |
+| Logging | Plain text | Emoji-enhanced with timestamps | Better UX, instant status recognition |
+| Scoring | Basic (PASS/FAIL) | Weighted multi-source scoring | More accurate quality measurement |
+| Cache | None | Dictionary-based result caching | Avoids redundant processing |
+| Auto-Correction | None | Rewrite with worker synthesis | Self-healing, improved quality |
+
+8.2 Key Decisions
+
+Why Chain of Responsibility?
+
+- Each handler has single responsibility
+- Easy to add/remove/reorder phases
+- Natural fit for pipeline processing
+Why Event-Driven Progress?
+
+- Unifies streaming and non-streaming
+- Decouples logic from presentation
+- Enables multiple subscribers (UI, logging, metrics)
+Why Token-Based Timeout?
+
+- LLM processing time is proportional to tokens
+- Adaptive to content length and model speed
+- Prevents both premature and excessive timeouts
+Why 4-Layer Reflection?
+
+- Covers all SEO quality dimensions
+- Layer 1-3 are fast heuristics (no LLM)
+- Layer 4 is optional LLM-based validation
+- SkipL4IfHeuristicPass saves cost
+
+# 9. Appendix
+
+9.1 Vietnamese Stopwords
+
 
 ```csharp
-public class OrchestratorError
+public static readonly HashSet<string> VietnameseStopWords = new()
 {
-    public string ErrorCode { get; set; }       // e.g., "URL_INVALID", "SCRAPE_TIMEOUT"
-    public string Message { get; set; }
-    public string? Url { get; set; }              // URL liên quan (nếu có)
-    public ErrorSeverity Severity { get; set; }   // Critical, Recoverable, Warning
-    public DateTimeOffset Timestamp { get; set; }
-    public string? StackTrace { get; set; }     // Debug mode only
-}
+    "và", "của", "là", "để", "thì", "mà", "cho", "trong", "các", "những",
+    "một", "có", "được", "đã", "đang", "sẽ", "từ", "đến", "với", "tại",
+    // ... full list in source code
+};
+9.2 Template Phrases Detection
+```
 
-public enum ErrorSeverity
+
+```csharp
+public static readonly List<string> TemplatePhrases = new()
 {
-    Critical,    // Skip URL, dừng batch nếu >= 5 consecutive
-    Recoverable, // Auto-retry hoặc auto-fix
-    Warning      // Log và tiếp tục
-}
+    "ngoài ra bạn cũng nên quan tâm đến",
+    "bạn có biết",
+    "trong bài viết này chúng tôi sẽ",
+    // ... full list in source code
+};
 ```
-
 ---
 
-## 14. Test Plan
-
-### 14.1 Test Strategy
-
-| Level | Type | Tool | Responsibility | Coverage Target |
-|-------|------|------|----------------|-----------------|
-| **Unit** | Component isolation | xUnit + NSubstitute | Developer | >80% business logic |
-| **Integration** | Multi-component | xUnit + TestContainers | Developer | All tool chains |
-| **E2E** | Full pipeline | Custom test harness | QA | 5 critical paths |
-| **Performance** | Load & stress | BenchmarkDotNet | DevOps | Baseline + regression |
-| **Security** | Vulnerability scan | OWASP ZAP (future) | Security | Input vectors |
-
-### 14.2 Unit Test Cases
-
-#### 14.2.1 Orchestrator Layer Tests
-
-| Test ID | Component | Scenario | Input | Expected | Priority |
-|---------|-----------|----------|-------|----------|----------|
-| UT-ORC-01 | `SEOCrawlSupervisorOrchestrator` | Parse valid URL list | 100 URLs newline-separated | `List<string>` count = 100 | P0 |
-| UT-ORC-02 | `SEOCrawlSupervisorOrchestrator` | Parse empty input | `""` | `ArgumentException` | P1 |
-| UT-ORC-03 | `SEOCrawlSupervisorOrchestrator` | Parse malformed URL | `"not-a-url"` | Filter out, log warning | P1 |
-| UT-ORC-04 | `SEOCrawlSupervisorOrchestrator` | Deduplicate URLs | 3 duplicate in 10 | Result = 8 unique | P1 |
-| UT-ORC-05 | `ProcessUrlAsync` | Happy path | Valid URL | `SEOUrlResult.Success = true` | P0 |
-| UT-ORC-06 | `ProcessUrlAsync` | Scrape failure | 404 URL | `Success = false`, `FailureReason = "SCRAPE_FAIL"` | P0 |
-| UT-ORC-07 | `PerformSEOReflectionAsync` | All heuristic pass | Good article | `Passed = true`, 0 issues | P0 |
-| UT-ORC-08 | `PerformSEOReflectionAsync` | Duplicate words detected | "SEO SEO SEO..." | `Passed = false`, issue = "DuplicateWords" | P0 |
-| UT-ORC-09 | `PerformSEOReflectionAsync` | Keyword density too high | 15% density | `Passed = false`, issue = "KeywordDensity" | P0 |
-| UT-ORC-10 | `PerformSEOReflectionAsync` | Readability too low | Complex text | `Passed = false`, issue = "Readability" | P0 |
-| UT-ORC-11 | `BuildRewritePrompt` | Generate prompt from issues | 2 issues | Prompt contains both issues + original text | P1 |
-| UT-ORC-12 | `BuildFinalReportAsync` | Aggregate 100 results | Mixed pass/fail | Markdown with stats table | P1 |
-
-#### 14.2.2 Reflection Engine Tests
-
-| Test ID | Component | Scenario | Input | Expected | Priority |
-|---------|-----------|----------|-------|----------|----------|
-| UT-REF-01 | Duplicate word check | No duplicates | Normal text | Pass | P0 |
-| UT-REF-02 | Duplicate word check | 6x "optimization" | "optimization" x6 | Fail, threshold = 5 | P0 |
-| UT-REF-03 | Keyword density | 2.5% density | 25 keywords / 1000 words | Pass (1%-5%) | P0 |
-| UT-REF-04 | Keyword density | 0.5% density | 5 keywords / 1000 words | Fail, too low | P0 |
-| UT-REF-05 | Flesch readability | Score = 45 | Simple text | Pass (>=30) | P0 |
-| UT-REF-06 | Flesch readability | Score = 15 | Academic text | Fail | P0 |
-| UT-REF-07 | LLM reflection | PASS response | LLM returns "PASS" | `Passed = true` | P0 |
-| UT-REF-08 | LLM reflection | FAIL response | LLM returns "FAIL: keyword stuffing" | `Passed = false`, issue captured | P0 |
-
-#### 14.2.3 Tool Tests
-
-| Test ID | Tool | Scenario | Input | Expected | Priority |
-|---------|------|----------|-------|----------|----------|
-| UT-TOOL-01 | `WebScraperTool` | Valid HTML page | `<html><body>Test</body></html>` | "Test", noise removed | P0 |
-| UT-TOOL-02 | `WebScraperTool` | Retry on timeout | Simulated timeout | Retry 3x then fail | P0 |
-| UT-TOOL-03 | `SEOAnalyzerTool` | Extract keywords | 500-word article | Top 10 keywords with density | P0 |
-| UT-TOOL-04 | `ContentWriterTool` | Generate article | Topic + analysis | Markdown with H1, H2, H3 | P0 |
-| UT-TOOL-05 | `DataConverterTool` | JSON to CSV | `[{"a":1}]` | CSV with headers | P1 |
-| UT-TOOL-06 | `MathOperationTool` | Mean calculation | `[1,2,3,4,5]` | `3.0` | P1 |
-| UT-TOOL-07 | `RunCommandTool` | Echo command | `echo "hello"` | "hello" | P2 |
-
-### 14.3 Integration Test Cases
-
-| Test ID | Flow | Components | Setup | Expected | Priority |
-|---------|------|------------|-------|----------|----------|
-| IT-FLOW-01 | Crawl → Analyze | Scraper + Analyzer | Mock HTTP server | Analysis report generated | P0 |
-| IT-FLOW-02 | Analyze → Write | Analyzer + Writer | Analysis JSON | Article references keywords | P0 |
-| IT-FLOW-03 | Write → Reflect | Writer + Reflection | Draft article | Reflection result produced | P0 |
-| IT-FLOW-04 | Full loop with rewrite | All 4 workers | Article with issues | Revised article after 1 round | P0 |
-| IT-FLOW-05 | Auto-tool-synthesis | Supervisor + Synthesizer | Missing tool request | New tool registered & executed | P1 |
-| IT-FLOW-06 | Batch 10 URLs | Full pipeline | 10 real URLs | 10 results + final report | P0 |
-| IT-FLOW-07 | Circuit breaker | Supervisor + Scraper | 5 consecutive 500 errors | Pause + resume | P2 |
-
-### 14.4 E2E Test Scenarios
-
-| Test ID | Scenario | Steps | Acceptance Criteria | Priority |
-|---------|----------|-------|---------------------|----------|
-| E2E-01 | Single URL end-to-end | 1. Input 1 URL<br>2. Run pipeline<br>3. Verify output files | Article generated, reflection PASS, files saved | P0 |
-| E2E-02 | Batch 100 URLs | 1. Input 100 URLs<br>2. Run batch<br>3. Verify report | All 100 processed, report with stats | P0 |
-| E2E-03 | Reflection correction loop | 1. Input low-quality content trigger<br>2. Verify rewrite | Article improved after <=3 rounds | P0 |
-| E2E-04 | Invalid URL handling | 1. Input 50% invalid URLs<br>2. Run pipeline | Invalid skipped, valid processed, report notes failures | P1 |
-| E2E-05 | Cancellation mid-batch | 1. Start 100 URL batch<br>2. Cancel at URL #50 | Graceful stop, partial results saved | P1 |
-
-### 14.5 Performance Test Cases
-
-| Test ID | Metric | Target | Method | Priority |
-|---------|--------|--------|--------|----------|
-| PERF-01 | Throughput | >=100 URLs/hour | Benchmark 100 URL batch | P0 |
-| PERF-02 | Per-URL latency | <=45s (p95) | Measure 100 samples | P0 |
-| PERF-03 | Memory peak | <=6 GB | dotMemory / BenchmarkDotNet | P0 |
-| PERF-04 | Reflection overhead | <=30% of write time | Compare with/without reflection | P1 |
-| PERF-05 | LLM token throughput | >=50 tokens/sec | Benchmark LlamaCppSharp | P1 |
-| PERF-06 | Concurrent tool calls | No deadlock | Stress test 50 parallel tools | P2 |
-
-### 14.6 Security Test Cases
-
-| Test ID | Vector | Test | Expected | Priority |
-|---------|--------|------|----------|----------|
-| SEC-01 | Malicious URL | Input `javascript:alert(1)` | Rejected by `Uri.TryCreate` | P0 |
-| SEC-02 | Command injection | Input `; rm -rf /` | Not passed to `RunCommandTool` | P0 |
-| SEC-03 | HTML injection | Scrape page with `<script>` | Script tags stripped | P0 |
-| SEC-04 | Large payload | Input 10MB single line | Handled gracefully, no OOM | P1 |
-| SEC-05 | Rate limit respect | 100 rapid requests | Delay 5s between requests | P1 |
-
-### 14.7 Test Data
-
-#### 14.7.1 Mock URLs
-
-| ID | URL | Expected Behavior |
-|----|-----|-------------------|
-| MOCK-01 | `https://example.com/seo-guide` | Returns valid HTML, 200 OK |
-| MOCK-02 | `https://example.com/timeout` | Times out (simulate) |
-| MOCK-03 | `https://example.com/404` | Returns 404 |
-| MOCK-04 | `https://example.com/500` | Returns 500, retry then fail |
-| MOCK-05 | `not-a-url` | Invalid, filtered |
-| MOCK-06 | `https://example.com/duplicate` | Duplicate of MOCK-01 |
-
-#### 14.7.2 Sample Articles for Reflection Testing
-
-| ID | Description | Expected Reflection |
-|----|-------------|---------------------|
-| ART-01 | Well-structured SEO article | PASS |
-| ART-02 | Keyword stuffed ("SEO" x20 in 200 words) | FAIL - KeywordDensity |
-| ART-03 | Complex academic language | FAIL - Readability |
-| ART-04 | Repeated phrases | FAIL - DuplicateWords |
-| ART-05 | Good content but missing headings | FAIL - LLM quality |
-
-### 14.8 Test Environment
-
-```
-Local Dev:
-  OS: Windows 11 / Ubuntu 22.04
-  .NET: 10.0 SDK
-  LLM: Gemma-4-E2B GGUF (local)
-  
-CI/CD (GitHub Actions):
-  OS: ubuntu-latest
-  .NET: 10.0
-  LLM: Mocked (NSubstitute) hoặc GPT-4o-mini API key
-  
-Staging:
-  Docker container
-  Volume mount: ./models /models
-  Env: LLAMA_MODEL_PATH=/models/gemma-4-E2B.gguf
-```
-
-### 14.9 Test Schedule
-
-| Phase | Duration | Tests | Exit Criteria |
-|-------|----------|-------|---------------|
-| Sprint 0-1 | 2 weeks | UT-ORC-01 to UT-TOOL-07 | 100% P0 pass |
-| Sprint 2 | 1 week | IT-FLOW-01 to IT-FLOW-07 | 100% P0 pass, 80% P1 pass |
-| Sprint 3 | 1 week | E2E-01 to E2E-05 | All P0 pass |
-| Sprint 4 | 3 days | PERF-01 to PERF-06 | Meet all targets |
-| Sprint 5 | 2 days | SEC-01 to SEC-05 | No critical vulnerabilities |
-
-### 14.10 Defect Severity Classification
-
-| Severity | Definition | Example | Response Time |
-|----------|------------|---------|---------------|
-| **S1** | Pipeline crash / data loss | NullReference in Supervisor | Fix within 4h |
-| **S2** | Feature broken, workaround exists | Reflection always FAIL | Fix within 1 day |
-| **S3** | Minor issue, cosmetic | Log format incorrect | Fix within 3 days |
-| **S4** | Enhancement / suggestion | Add more metrics | Next sprint |
-
----
-
-### A.1 WebScraperTool
-
-```yaml
-Name: WebScraper
-Input: { url: string, max_length: int(15000) }
-Output: Clean text extraction with metadata
-Retry: 3 attempts, +10s timeout per attempt
-Noise Removal: script, style, nav, footer, aside, noscript, form elements
-```
-
-### A.2 SEOAnalyzerTool
-
-```yaml
-Name: SEOAnalyzer
-Input: { text: string, top_keywords: int(10) }
-Output: Markdown report with:
-  - Top keywords (word, count, density%)
-  - Heading structure (H1-H6 detection)
-  - Flesch readability score
-  - Improvement suggestions
-Stop Words: 80+ English + Vietnamese common words
-```
-
-### A.3 ContentWriterTool
-
-```yaml
-Name: ContentWriter
-Input: { topic?, reference_text?, primary_keyword?, secondary_keywords?, mode, tone, target_length, structure? }
-Modes: new | rewrite | expand
-Tones: seo | professional | friendly | persuasive | informative
-Structures: review | guide | listicle | comparison
-Auto-features:
-  - Guess primary keyword if not provided
-  - Auto-add FAQ if content < 70% target length
-  - Enforce H1/H2/H3 structure
-```
-
-### A.4 DataConverterTool
-
-```yaml
-Name: DataConverter
-Formats: json | csv | xml | markdown | text
-Features:
-  - CSV delimiter customization (; default)
-  - Pretty-print JSON/XML
-  - Header inclusion
-  - XML name sanitization
-  - Markdown table generation
-```
-
-### A.5 MathOperationTool
-
-```yaml
-Name: MathOperation
-Operations: 30+
-Categories:
-  - Arithmetic: add, subtract, multiply, divide, modulo
-  - Power/Root: power, sqrt, cbrt, root
-  - Log: log, log10, ln, exp
-  - Round: abs, round, floor, ceiling, truncate
-  - Trig: sin, cos, tan, asin, acos, atan
-  - Stats: mean, median, mode, stddev, variance, min, max, sum, product
-  - Expression: evaluate (DataTable.Compute)
-```
-
-### A.6 FactorialCalculationTool
-
-```yaml
-Name: FactorialCalculation
-Operations: factorial, permutation, combination, double_factorial, stirling_approx
-Data Type: BigInteger (unlimited precision)
-Max n: 10,000
-Features: show_steps (for n <= 20), scientific notation for large results
-```
-
-### A.7 DirectQueryTool
-
-```yaml
-Name: DirectQuery
-Methods: GET, POST, PUT, DELETE, PATCH
-Features:
-  - Custom headers
-  - Query parameters
-  - Raw body with content-type
-  - Timeout (default 60s)
-  - Auto JSON pretty-print
-State: Stateless
-```
-
-### A.8 DirectRequestTool
-
-```yaml
-Name: DirectRequest
-Methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
-Features:
-  - CookieContainer (session persistence)
-  - Form data (application/x-www-form-urlencoded)
-  - File download (binary save)
-  - Binary content detection
-  - Response headers dump
-  - Auto-redirect (10 max)
-State: Stateful (cookie jar maintained)
-```
-
-### A.9 RunCommandTool
-
-```yaml
-Name: RunCommand
-Shells: cmd, powershell, bash, sh, zsh (auto-detect OS)
-Features:
-  - Working directory
-  - Environment variables
-  - Timeout with auto-kill (default 60s)
-  - Separate stdout/stderr capture
-  - Exit code reporting
-Security: Warning — only run trusted commands
-```
-
----
-
-## Appendix B: Configuration Reference
-
-### B.1 SEOCrawlSupervisorOptions
-
-```json
-{
-  "maxUrlBatchSize": 100,
-  "enableKeywordDensityCheck": true,
-  "enableDuplicateWordCheck": true,
-  "enableReadabilityCheck": true,
-  "minKeywordDensity": 0.01,
-  "maxKeywordDensity": 0.05,
-  "maxDuplicateWordThreshold": 5,
-  "minReadabilityScore": 30.0,
-  "maxContentLength": 5000,
-  "enableAutoToolSynthesis": false,
-  "enableAutoFix": true,
-  "enableFinalReflection": true,
-  "maxCorrectionRounds": 3
-}
-```
-
-### B.2 AgentDefinition Defaults
-
-```json
-{
-  "maxIterations": 5,
-  "maxToolRounds": 2,
-  "toolTimeout": "00:10:00",
-  "allowedTools": ["ReadFile", "WriteFile", "WebScraper", "SEOAnalyzer", "ContentWriter"]
-}
-```
-
-### B.3 Log Format
-
-```
-[HH:mm:ss][SYSTEM] == KHOI DONG CHUOI TAC VU: URL #01 ==
-[HH:mm:ss][PLANNER] Phat hien 100 URL can xu ly. Lap ke hoach DAG...
-[HH:mm:ss][REACT] Kich hoat [WebScraper] ── Thuc thi ReAct Streaming...
-[HH:mm:ss][SYSTEM] WebScraper: Tra ve thanh cong du lieu tho (4200 ky tu).
-[HH:mm:ss][REACT] Kich hoat [SEOAnalyzer] ── Phan tich tu khoa nang cao.
-[HH:mm:ss][REFLECTION] Dang kiem tra chat luong dau ra (Reflection Engine)...
-[HH:mm:ss][REFLECTION] Kiem tra dau ra: Dat chuan 100%!
-[HH:mm:ss][SYSTEM] == HOAN THANH TAC VU URL #01 (Tong thoi gian: 32 giay) ==
-```
-
----
-
-## Revision History
-
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2026-08-21 | Hoang Nguyen Cong | Initial HLD & Detail Design |
-
----
+**Document Version:** 1.4.0  
 
