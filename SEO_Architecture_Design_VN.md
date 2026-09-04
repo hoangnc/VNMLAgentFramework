@@ -1,4 +1,4 @@
-# SEOCrawlSupervisorOrchestrator — High-Level Design & Detail Design
+# SEOCrawlSupervisorOrchestrator - High-Level Design & Detail Design
 
 ## Document Revision History
 
@@ -9,33 +9,37 @@
 | 1.2.0 | 2026-08-30 | System | Dynamic Timeout | Added token-based timeout calculation for LLM operations |
 | 1.3.0 | 2026-08-31 | System | Event-Driven Progress | Unified streaming/non-streaming via Progress events with emoji logging |
 | 1.4.0 | 2026-08-31 | System | Reflection Engine | Extracted Reflection logic into dedicated engine with 4-layer heuristic |
-
+| 1.5.0 | 2026-09-04 | System | File-Based Processing | BREAKING: Removed LLM tool calls for file operations; handlers now read/write files directly and pass content via context |
 
 # 1. Executive Summary
 
-1.1 System Overview
+## 1.1 System Overview
+The **SEOCrawlSupervisorOrchestrator** is a production-grade, pipeline-based orchestration system designed for automated SEO content processing. It manages end-to-end workflows including:
 
-The SEOCrawlSupervisorOrchestrator is a production-grade, pipeline-based orchestration system designed for automated SEO content processing. It manages end-to-end workflows including:
+**Web crawling** – extract content from target URLs
 
-- Web crawling – extract content from target URLs
-- SEO analysis – evaluate keyword density, readability, structure
-- Content writing – generate SEO-optimized articles
-- Quality reflection – multi-layer quality assurance with auto-correction
-- Result persistence – save articles and generate comprehensive reports
-1.2 Key Features
+**SEO analysis** – evaluate keyword density, readability, structure
+
+**Content writing** – generate SEO-optimized articles
+
+**Quality reflection** – multi-layer quality assurance with auto-correction
+
+**Result persistence** – save articles and generate comprehensive reports
+
+## 1.2 Key Features
 
 | Feature | Description | Status |
 | --- | --- | --- |
-| Pipeline Architecture | Chain of Responsibility with 6 handlers | ✅ Complete |
-| Dynamic Timeout | Token-based timeout calculation per LLM | ✅ Complete |
+| Pipeline Architecture | Chain of Responsibility with 7 handlers | ✅ Complete |
+| File-Based Processing | Handlers read/write files directly, LLM no longer calls file tools | ✅ Complete |
+| Dynamic Timeout | Token-based timeout calculation per LLM with thinking mode | ✅ Complete |
 | Event-Driven Progress | Real-time UI updates via Progress events | ✅ Complete |
 | Vietnamese SEO | Custom heuristic for Vietnamese content | ✅ Complete |
 | Auto Tool Synthesis | Dynamic tool generation for missing capabilities | ✅ Complete |
 | 4-Layer Reflection | Duplicate words, templates, density, readability | ✅ Complete |
 | Auto-Correction | Rewrite content when quality fails | ✅ Complete |
 | Emoji Logging | Rich visual feedback with emojis | ✅ Complete |
-
-1.3 Technology Stack
+## 1.3 Technology Stack
 
 | Layer | Technology |
 | --- | --- |
@@ -45,29 +49,26 @@ The SEOCrawlSupervisorOrchestrator is a production-grade, pipeline-based orchest
 | Logging | Serilog, Microsoft.Extensions.Logging |
 | Data Format | JSON, Markdown |
 | Concurrency | Async/Await, CancellationToken, Channels |
-
-
 # 2. High-Level Design (HLD)
 
-2.1 System Architecture
-
+## 2.1 System Architecture
 
 ```mermaid
 flowchart TD
     subgraph UI["User Interface"]
-        A["User Input"]
-        B["Real-time Progress"]
-        C["Final Report"]
+        A[User Input]
+        B[Real-time Progress]
+        C[Final Report]
     end
 
-    subgraph ORCH["SEOCrawlSupervisorOrchestrator"]
-        D["URL Parser"]
-        E["Pipeline Executor"]
-        F["Event Subscriber"]
-        G["Report Generator"]
+    subgraph Orchestrator["SEOCrawlSupervisorOrchestrator"]
+        D[URL Parser]
+        E[Pipeline Executor]
+        F[Event Subscriber]
+        G[Report Generator]
     end
 
-    subgraph PIPE["Pipeline - Chain of Responsibility"]
+    subgraph Pipeline["Pipeline (Chain of Responsibility)"]
         H1["UrlValidationHandler"]
         H2["UrlQuantityValidationHandler"]
         H3["ScrapingHandler"]
@@ -75,44 +76,40 @@ flowchart TD
         H5["ContentWritingHandler"]
         H6["ReflectionHandler"]
         H7["SavingHandler"]
-        H1 --> H2 --> H3 --> H4 --> H5 --> H6 --> H7
     end
 
-    subgraph ENG["Core Engines"]
-        E1["TimeoutCalculator"]
-        E2["ReflectionEngine"]
-        E3["LoggingFactory"]
+    subgraph Engine["Core Engines"]
+        E1[TimeoutCalculator]
+        E2[ReflectionEngine]
+        E3[LoggingFactory]
     end
 
-    subgraph WORK["Specialist Agents"]
-        W1["Scraper Agent"]
-        W2["SEO Analyzer"]
-        W3["Content Writer"]
+    subgraph Workers["Specialist Agents"]
+        W1[Scraper Agent]
+        W2[SEO Analyzer]
+        W3[Content Writer]
     end
 
-    subgraph STORE["Data Storage"]
-        S1[("JSON Files")]
-        S2[("Markdown Files")]
-        S3[("Reports")]
+    subgraph Storage["Data Storage"]
+        S1[(JSON Files)]
+        S2[(Markdown Files)]
+        S3[(Reports)]
     end
 
     A --> D
     D --> E
-    E --> H1
-
+    E --> Pipeline
+    H1 --> H2 --> H3 --> H4 --> H5 --> H6 --> H7
     H3 -.-> W1
     H4 -.-> W2
     H5 -.-> W3
     H6 -.-> E2
-
     E --> F
     F --> B
     E --> G
     G --> C
-
-    E1 -.-> H1
-    E3 -.-> H1
-
+    E1 --> Pipeline
+    E3 --> Pipeline
     W1 --> S1
     W2 --> S1
     W3 --> S2
@@ -120,47 +117,52 @@ flowchart TD
     G --> S3
 ```
 
+## 2.2 Data Flow – File-Based Processing (v1.5.0)
 
 ```mermaid
-flowchart LR
-    subgraph PHASE["Execution Phases"]
-        P1["1. Validation"]
-        P2["2. Quantity Check"]
-        P3["3. Scraping"]
-        P4["4. Analysis"]
-        P5["5. Writing"]
-        P6["6. Reflection"]
-        P7["7. Saving"]
-        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
+flowchart TD
+    subgraph Input["Input"]
+        URL[User Input]
     end
 
-    subgraph PROGRESS["Real-time Progress"]
-        EV1["Progress Event 1"]
-        EV2["Progress Event 2"]
-        EV3["Progress Event 3"]
-        EV4["Progress Event 4"]
-        EV5["Progress Event 5"]
-        EV6["Progress Event 6"]
-        EV7["Progress Event 7"]
+    subgraph Handlers["Pipeline Handlers"]
+        H1[1. Validation]
+        H2[2. Quantity Check]
+        H3[3. Scraping]
+        H4[4. Analysis]
+        H5[5. Writing]
+        H6[6. Reflection]
+        H7[7. Saving]
     end
 
-    P1 -.-> EV1
-    P2 -.-> EV2
-    P3 -.-> EV3
-    P4 -.-> EV4
-    P5 -.-> EV5
-    P6 -.-> EV6
-    P7 -.-> EV7
+    subgraph Data["Data Flow"]
+        D1[ScrapedFilePath]
+        D2[ScrapedContent]
+        D3[AnalysisFilePath]
+        D4[AnalysisContent]
+        D5[PrimaryKeyword]
+        D6[ArticleFilePath]
+        D7[ArticleContent]
+    end
 
-    EV1 --> UI["UI Render"]
-    EV2 --> UI
-    EV3 --> UI
-    EV4 --> UI
-    EV5 --> UI
-    EV6 --> UI
-    EV7 --> UI
+    H3 -->|writes| D1
+    H3 -->|extracts| D2
+    H4 -->|reads| D2
+    H4 -->|writes| D3
+    H4 -->|extracts| D4
+    H4 -->|extracts| D5
+    H5 -->|reads| D2
+    H5 -->|reads| D4
+    H5 -->|reads| D5
+    H5 -->|writes| D6
+    H5 -->|extracts| D7
+    H6 -->|reads| D7
+    H7 -->|reads| D6
+    H7 -->|reads| D7
+    H7 -->|generates| Final[SEOUrlResult]
 ```
 
+## 2.3 Component Overview
 
 ```mermaid
 classDiagram
@@ -169,26 +171,26 @@ classDiagram
         +RunAsync()
         +RunStreamingAsync()
     }
-
+    
     class SEOCrawlSupervisorOrchestrator {
-        -AgentTeam team
-        -SEOCrawlSupervisorOptions options
-        -UrlProcessingHandler pipelineHead
-        -Dictionary reflectionCache
-        -Dictionary scrapedEntityCache
-        -HashSet attemptedSynthesis
+        -AgentTeam _team
+        -SEOCrawlSupervisorOptions _options
+        -UrlProcessingHandler _pipelineHead
+        -Dictionary~string,SEOReflectionResult~ _reflectionCache
+        -Dictionary~string,HashSet~string~~ _scrapedEntityCache
+        -HashSet~string~ _attemptedSynthesis
         +BuildPipeline()
         +RunAsync()
         +RunStreamingAsync()
         -FormatProgressLog()
         -ExtractScore()
     }
-
+    
     class UrlProcessingHandler {
         <<abstract>>
-        #ILogger logger
-        #UrlProcessingHandler next
-        +Progress
+        #ILogger _logger
+        #UrlProcessingHandler _next
+        +event Progress
         +SetNext()
         +HandleAsync()
         #OnProgress()
@@ -197,43 +199,44 @@ classDiagram
         #CreateTimeoutCts()
         #CreateDynamicTimeoutCts()
     }
-
+    
     class UrlValidationHandler {
         +HandleAsync()
     }
-
+    
     class UrlQuantityValidationHandler {
         +HandleAsync()
     }
-
+    
     class ScrapingHandler {
         +HandleAsync()
         #BuildScraperPrompt()
         #PrecalculateTimeouts()
     }
-
+    
     class AnalysisHandler {
         +HandleAsync()
         #BuildAnalysisPrompt()
         -ExtractScoreFromAnalysis()
     }
-
+    
     class ContentWritingHandler {
         +HandleAsync()
         #BuildWritePrompt()
+        -ReadFileAndExtractContent()
     }
-
+    
     class ReflectionHandler {
-        -ReflectionEngine engine
+        -ReflectionEngine _engine
         +HandleAsync()
         -PerformRewriteAsync()
         -OnEngineProgress()
     }
-
+    
     class ReflectionEngine {
-        -ILogger logger
-        -SEOCrawlSupervisorOptions options
-        +Progress
+        -ILogger _logger
+        -SEOCrawlSupervisorOptions _options
+        +event Progress
         +RunReflectionAsync()
         -CheckDuplicateWordsAsync()
         -CheckTemplatePhrasesAsync()
@@ -241,24 +244,26 @@ classDiagram
         -CheckReadabilityAsync()
         -CheckLLMAsync()
     }
-
+    
     class SavingHandler {
         +HandleAsync()
+        -SaveFinalReport()
+        -CopyArticle()
     }
-
+    
     class TimeoutCalculator {
         <<static>>
         +CalculateTimeout()
         +CalculateByContentLength()
         +CalculateAllTimeouts()
     }
-
+    
     class LoggingFactory {
         <<static>>
         +CreateLogger()
         +DisposeAll()
     }
-
+    
     IStreamingAgentOrchestrator <|.. SEOCrawlSupervisorOrchestrator
     SEOCrawlSupervisorOrchestrator --> UrlProcessingHandler : uses
     UrlProcessingHandler <|-- UrlValidationHandler
@@ -274,11 +279,9 @@ classDiagram
     UrlProcessingHandler --> LoggingFactory : uses
 ```
 
-
 # 3. Detail Design (DD)
 
-3.1 Chain of Responsibility Implementation
-
+## 3.1 Chain of Responsibility Implementation
 
 ```mermaid
 sequenceDiagram
@@ -302,25 +305,32 @@ sequenceDiagram
     Q->>S: HandleAsync(context)
     activate S
     S->>S: Call Scraper Worker
-    S->>S: Extract Content Length
-    S->>S: Precalculate Timeouts
+    S->>S: Read scraped file → extract content
+    S->>S: Store ScrapedContent in context
     S-->>O: Progress Event
     S->>A: HandleAsync(context)
     activate A
-    A->>A: Call Analyzer Worker
+    A->>A: Read ScrapedContent from context
+    A->>A: Call Analyzer Worker (JSON output)
+    A->>A: Save JSON to file
+    A->>A: Store AnalysisContent + PrimaryKeyword
     A-->>O: Progress Event
     A->>W: HandleAsync(context)
     activate W
-    W->>W: Call Writer Worker
+    W->>W: Read ScrapedContent + AnalysisContent
+    W->>W: Call Writer Worker (Markdown output)
+    W->>W: Save Markdown to file
+    W->>W: Store ArticleContent in context
     W-->>O: Progress Event
     W->>R: HandleAsync(context)
     activate R
-    R->>R: Run Reflection Engine
-    R->>R: Check 4 Layers
+    R->>R: Read ArticleContent from context
+    R->>R: Run Reflection Engine (4 layers)
     R-->>O: Progress Event
     R->>SV: HandleAsync(context)
     activate SV
-    SV->>SV: Save Article
+    SV->>SV: Copy article to final directory
+    SV->>SV: Generate SEOUrlResult
     SV-->>O: Progress Event
     deactivate SV
     deactivate R
@@ -331,32 +341,172 @@ sequenceDiagram
     deactivate V
 ```
 
+## 3.2 File-Based Data Flow (Key Changes in v1.5.0)
 
 ```mermaid
 flowchart TD
-    subgraph INPUT["Input Parameters"]
-        CL["Content Length"]
-        PL["Prompt Length"]
-        RL["Response Length"]
+    subgraph Context["UrlProcessingContext - WorkerOutputs"]
+        K1["ScrapedFilePath: string"]
+        K2["ScrapedContent: string (JSON)"]
+        K3["AnalysisFilePath: string"]
+        K4["AnalysisContent: string (JSON)"]
+        K5["AnalysisScore: string"]
+        K6["PrimaryKeyword: string"]
+        K7["ArticleFilePath: string"]
+        K8["ArticleContent: string (Markdown)"]
+        K9["ReflectionResult: SEOReflectionResult"]
     end
 
-    subgraph CONFIG["Configuration"]
-        TPS["Tokens Per Second"]
-        SBM["Safety Buffer Multiplier"]
-        MIN["Min Timeout"]
-        MAX["Max Timeout"]
-        CPT["Chars Per Token"]
-        HM["Handler Multiplier"]
+    subgraph Handlers["Handlers"]
+        S[ScrapingHandler]
+        A[AnalysisHandler]
+        W[ContentWritingHandler]
+        R[ReflectionHandler]
+        SV[SavingHandler]
     end
 
-    subgraph CALC["Calculation"]
+    S -->|writes| K1
+    S -->|extracts| K2
+    A -->|reads| K2
+    A -->|writes| K3
+    A -->|extracts| K4
+    A -->|extracts| K5
+    A -->|extracts| K6
+    W -->|reads| K2
+    W -->|reads| K4
+    W -->|reads| K6
+    W -->|writes| K7
+    W -->|extracts| K8
+    R -->|reads| K8
+    R -->|writes| K9
+    SV -->|reads| K7
+    SV -->|reads| K8
+    SV -->|reads| K9
+```
+
+## 3.3 Reflection Engine - 4 Layers with Status Notification
+
+```mermaid
+flowchart TD
+    subgraph Input["Input"]
+        C[Article Content]
+        U[Source URL]
+    end
+
+    subgraph L1["Layer 1: Duplicate Words"]
+        L1I[Split into words]
+        L1C[Count frequency]
+        L1D[Detect >3 occurrences]
+        L1R[Pass if none found]
+        L1N[Notify: ✅ PASS / ❌ FAIL]
+    end
+
+    subgraph L1B["Layer 1B: Template Phrases"]
+        L1BI[Detect common templates]
+        L1BC[Count occurrences]
+        L1BD[Detect ≥2 occurrences]
+        L1BR[Pass if none found]
+        L1BN[Notify: ✅ PASS / ❌ FAIL]
+    end
+
+    subgraph L2["Layer 2: Keyword Density"]
+        L2I[Extract keywords]
+        L2C[Calculate density]
+        L2D[Check 1.2%-3.5% range]
+        L2R[Pass if in range]
+        L2N[Notify: ✅ PASS / ❌ FAIL]
+    end
+
+    subgraph L3["Layer 3: Readability"]
+        L3I[Count sentences]
+        L3C[Average length]
+        L3D[Detect long sentences]
+        L3R[Pass if score ≥ 60]
+        L3N[Notify: ✅ PASS / ❌ FAIL]
+    end
+
+    subgraph L4["Layer 4: LLM Reflection"]
+        L4I[Build prompt]
+        L4C[Call LLM]
+        L4D[JSON output]
+        L4R[Pass if all good]
+        L4N[Notify: ✅ PASS / ❌ FAIL]
+    end
+
+    subgraph Output["Output"]
+        SUM[Summary Result]
+        ISS[Issues List]
+        SUG[Suggestions List]
+        SCR[Score Calculation]
+        NOT[Final Notification]
+    end
+
+    C --> L1
+    C --> L1B
+    C --> L2
+    C --> L3
+    C --> L4
+    U --> L4
+
+    L1 --> L1R --> L1N
+    L1B --> L1BR --> L1BN
+    L2 --> L2R --> L2N
+    L3 --> L3R --> L3N
+    L4 --> L4R --> L4N
+
+    L1N --> SUM
+    L1BN --> SUM
+    L2N --> SUM
+    L3N --> SUM
+    L4N --> SUM
+
+    L1R --> ISS
+    L1BR --> ISS
+    L2R --> ISS
+    L3R --> ISS
+    L4R --> ISS
+
+    ISS --> SUG
+    SUG --> SCR
+    SUM --> SCR
+    SCR --> NOT
+```
+
+## 3.4 Dynamic Timeout with Thinking Mode
+
+```mermaid
+flowchart TD
+    subgraph Input["Input Parameters"]
+        CL[Content Length]
+        PL[Prompt Length]
+        RL[Response Length]
+        HM[Handler Multiplier]
+    end
+
+    subgraph Config["Configuration"]
+        TPS[Tokens Per Second]
+        SBM[Safety Buffer Multiplier]
+        MIN[Min Timeout]
+        MAX[Max Timeout]
+        CPT[Chars Per Token]
+        ER[Enable Reasoning]
+        RTP[Reasoning Time Per Token]
+        RBS[Reasoning Base Seconds]
+        RM[Reasoning Multiplier]
+    end
+
+    subgraph Calculate["Calculation"]
         TE["Total Chars = PL + RL"]
         ET["Estimated Tokens = TE / CPT"]
         BT["Base Time = ET / TPS"]
         ST["Safe Time = BT * HM * SBM"]
-        FT["Final Time = Clamp(ST, MIN, MAX)"]
+
+        RT["Reasoning Time = ET * RTP + RBS * RM"]
+        FT["Final Time = ST + RT"]
+        TO["Clamped Timeout = Clamp(FT, MIN, MAX)"]
     end
 
+    CL --> TE
     PL --> TE
     RL --> TE
     TE --> ET
@@ -366,93 +516,22 @@ flowchart TD
     BT --> ST
     HM --> ST
     SBM --> ST
+
+    ET --> RT
+    RTP --> RT
+    RBS --> RT
+    RM --> RT
+
     ST --> FT
-    MIN --> FT
-    MAX --> FT
-    FT --> TO["Timeout"]
+    RT --> FT
+    FT --> TO
+    MIN --> TO
+    MAX --> TO
 
-    CL -.-> TE
+    TO --> T[Timeout]
 ```
 
-
-```mermaid
-flowchart TD
-    subgraph INPUT["Input"]
-        C["Article Content"]
-        U["Source URL"]
-    end
-
-    subgraph L1["Layer 1: Duplicate Words"]
-        L1I["Split into words"]
-        L1C["Count frequency"]
-        L1D["Detect >3 occurrences"]
-        L1R["Pass if none found"]
-        L1I --> L1C --> L1D --> L1R
-    end
-
-    subgraph L1B["Layer 1B: Template Phrases"]
-        L1BI["Detect common templates"]
-        L1BC["Count occurrences"]
-        L1BD["Detect >=2 occurrences"]
-        L1BR["Pass if none found"]
-        L1BI --> L1BC --> L1BD --> L1BR
-    end
-
-    subgraph L2["Layer 2: Keyword Density"]
-        L2I["Extract keywords"]
-        L2C["Calculate density"]
-        L2D["Check 1.2%-3.5% range"]
-        L2R["Pass if in range"]
-        L2I --> L2C --> L2D --> L2R
-    end
-
-    subgraph L3["Layer 3: Readability"]
-        L3I["Count sentences"]
-        L3C["Average length"]
-        L3D["Detect long sentences"]
-        L3R["Pass if score >= 60"]
-        L3I --> L3C --> L3D --> L3R
-    end
-
-    subgraph L4["Layer 4: LLM Reflection"]
-        L4I["Build prompt"]
-        L4C["Call LLM"]
-        L4D["JSON output"]
-        L4R["Pass if all good"]
-        L4I --> L4C --> L4D --> L4R
-    end
-
-    subgraph OUTPUT["Output"]
-        SUM["Summary Result"]
-        ISS["Issues List"]
-        SUG["Suggestions List"]
-        SCR["Score Calculation"]
-    end
-
-    C --> L1I
-    C --> L1BI
-    C --> L2I
-    C --> L3I
-    C --> L4I
-    U --> L4I
-
-    L1R --> SUM
-    L1BR --> SUM
-    L2R --> SUM
-    L3R --> SUM
-    L4R --> SUM
-
-    L1D --> ISS
-    L1BD --> ISS
-    L2D --> ISS
-    L3D --> ISS
-    L4D --> ISS
-
-    ISS --> SUG
-    SUG --> SCR
-    SUM --> SCR
-```
-
+## 3.5 Event-Driven Progress Flow
 
 ```mermaid
 sequenceDiagram
@@ -479,105 +558,63 @@ sequenceDiagram
     O->>C: Write to Channel
     C->>UI: Read from Channel
     UI->>UI: Render completion
-```
-
-
-```mermaid
-flowchart TD
-    subgraph INPUT["Input Phase"]
-        A["User Input"] --> B["URL Parser"]
-        B --> C["URL List"]
-    end
-
-    subgraph CONTEXT["Context Initialization"]
-        C --> D["Create UrlProcessingContext"]
-        D --> E["Initialize Dictionaries"]
-        D --> F["Set Options"]
-        D --> G["Set Cancellation Token"]
-    end
-
-    subgraph PIPE["Pipeline Processing"]
-        E --> H1["Validation"]
-        H1 -->|Pass| H2["Quantity Check"]
-        H2 -->|Pass| H3["Scraping"]
-        H3 -->|Content| H4["Analysis"]
-        H4 -->|Report| H5["Writing"]
-        H5 -->|Article| H6["Reflection"]
-        H6 -->|Quality| H7["Saving"]
-    end
-
-    subgraph OUTPUT["Output Phase"]
-        H7 --> I1["WorkerOutputs"]
-        H7 --> I2["PhaseTimings"]
-        H7 --> I3["SEOUrlResult"]
-        I1 --> J1["JSON Data"]
-        I2 --> J2["Markdown Report"]
-        I3 --> J3["Final Result"]
-    end
-
-    subgraph PROGRESS["Real-time Progress"]
-        H1 -.-> K1["Progress Event"]
-        H2 -.-> K2["Progress Event"]
-        H3 -.-> K3["Progress Event"]
-        H4 -.-> K4["Progress Event"]
-        H5 -.-> K5["Progress Event"]
-        H6 -.-> K6["Progress Event"]
-        H7 -.-> K7["Progress Event"]
-        K1 --> L["Channel"]
-        K2 --> L
-        K3 --> L
-        K4 --> L
-        K5 --> L
-        K6 --> L
-        K7 --> L
-        L --> M["UI Render"]
-    end
-```
-
-
-```mermaid
-flowchart TD
-    subgraph SOURCES["Score Sources"]
-        A["Reflection Result"]
-        B["Analysis Output"]
-        C["Content Length"]
-        D["Writer Output"]
-    end
-
-    subgraph EXTRACT["Extract Score"]
-        A --> E1["ExtractScoreFromReflection"]
-        B --> E2["ExtractScoreFromAnalysis"]
-        C --> E3["ExtractScoreFromContentLength"]
-        D --> E4["ExtractScoreFromWriter"]
-    end
-
-    subgraph WEIGHTS["Weighting"]
-        E1 --> W1["Weight: 0.4"]
-        E2 --> W2["Weight: 0.3"]
-        E3 --> W3["Weight: 0.1"]
-        E4 --> W4["Weight: 0.2"]
-    end
-
-    subgraph COMBINE["Combine"]
-        W1 --> C1["Weighted Average"]
-        W2 --> C1
-        W3 --> C1
-        W4 --> C1
-        C1 --> F["Final Score"]
-    end
-
-    subgraph THRESHOLD["Threshold"]
-        F --> T{"Score >= 70?"}
-        T -->|Yes| P["PASS - OK"]
-        T -->|No| F2["FAIL"]
-    end
-```
-
 
 # 4. Component Details
+```
 
-4.1 SEOCrawlSupervisorOptions
+## 4.1 UrlProcessingContext (v1.5.0)
 
+```csharp
+public class UrlProcessingContext
+{
+    // === Core Info ===
+    public string Url { get; set; } = string.Empty;
+    public int Index { get; set; }
+    public int Total { get; set; }
+    public int ContentLength { get; set; }
+    public int PromptLength { get; set; }
+
+    // === Worker Outputs (File-Based) ===
+    public Dictionary<string, string> WorkerOutputs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    // === Phase Tracking ===
+    public List<PhaseTiming> PhaseTimings { get; set; } = new();
+    public bool Success { get; set; } = true;
+    public string? FailureReason { get; set; }
+    public int RewriteRounds { get; set; }
+    public SEOUrlResult? Result { get; set; }
+
+    // === Timeout ===
+    public Dictionary<string, TimeSpan> AdjustedTimeouts { get; set; } = new();
+
+    // === Dependencies ===
+    public SEOCrawlSupervisorOptions Options { get; set; } = null!;
+    public AgentTeam Team { get; set; } = null!;
+    public Dictionary<string, SEOReflectionResult> ReflectionCache { get; set; } = null!;
+    public Dictionary<string, HashSet<string>> ScrapedEntityCache { get; set; } = null!;
+    public HashSet<string> AttemptedSynthesis { get; set; } = null!;
+    public DynamicToolSynthesizer? ToolSynthesizer { get; set; }
+    public IDynamicToolRegistry? DynamicRegistry { get; set; }
+    public ILoggerFactory? LoggerFactory { get; set; }
+    public CancellationToken CancellationToken { get; set; }
+    public ILogger Logger { get; set; } = null!;
+}
+```
+
+## 4.2 WorkerOutputs - Standard Keys
+
+| Key | Type | Description | Written By | Read By |
+| --- | --- | --- | --- | --- |
+| ScrapedFilePath | string | Path to scraped JSON file | ScrapingHandler | (reference) |
+| ScrapedContent | string | Raw JSON content of scraped file | ScrapingHandler | AnalysisHandler, ContentWritingHandler |
+| AnalysisFilePath | string | Path to analysis JSON file | AnalysisHandler | (reference) |
+| AnalysisContent | string | Analysis JSON content | AnalysisHandler | ContentWritingHandler, SavingHandler |
+| AnalysisScore | string | SEO score extracted from analysis | AnalysisHandler | SavingHandler |
+| PrimaryKeyword | string | Primary keyword from analysis | AnalysisHandler | ContentWritingHandler |
+| ArticleFilePath | string | Path to article MD file | ContentWritingHandler | SavingHandler |
+| ArticleContent | string | Markdown article content | ContentWritingHandler | ReflectionHandler, SavingHandler |
+| ReflectionResult | SEOReflectionResult | Reflection result | ReflectionHandler | SavingHandler |
+## 4.3 SEOCrawlSupervisorOptions
 
 ```csharp
 public class SEOCrawlSupervisorOptions
@@ -588,21 +625,21 @@ public class SEOCrawlSupervisorOptions
     public bool SaveArticlesToFiles { get; set; } = true;
     public bool SaveFinalReport { get; set; } = true;
     public bool SkipL4IfHeuristicPass { get; set; } = true;
-    
+    public int MaxUrls { get; set; } = 10;
+
     // === Timeout Settings ===
     public int BatchTotalTimeoutMinutes { get; set; } = 120;
     public int? UrlTotalTimeoutMinutes { get; set; } = 15;
     public int MaxCorrectionRounds { get; set; } = 1;
     public int? WorkerTimeoutSeconds { get; set; } = 120;
     public int? AgentTimeoutSeconds { get; set; } = 60;
-    
+
     // === LLM Token Settings ===
     public LlmConfig LlmConfig { get; set; } = new();
-    
+
     // === Output Settings ===
     public string OutputDirectory { get; set; } = "./output";
-    public int? MaxUrls { get; set; } = 10;
-    
+
     // === Handler Multipliers ===
     public Dictionary<string, double> HandlerTokenMultipliers { get; set; } = new()
     {
@@ -616,15 +653,22 @@ public class SEOCrawlSupervisorOptions
 
 public class LlmConfig
 {
+    // === Token & Timeout ===
     public double TokensPerSecond { get; set; } = 50;
     public double SafetyBufferMultiplier { get; set; } = 1.5;
     public int MinTimeoutSeconds { get; set; } = 30;
     public int MaxTimeoutSeconds { get; set; } = 900;
     public double CharsPerToken { get; set; } = 4.0;
+
+    // === Thinking / Reasoning ===
+    public bool EnableReasoning { get; set; } = true;
+    public double ReasoningTimePerToken { get; set; } = 0.02;
+    public double ReasoningBaseSeconds { get; set; } = 5.0;
+    public double ReasoningMultiplier { get; set; } = 1.8;
 }
-4.2 ProgressEventArgs
 ```
 
+## 4.4 ProgressEventArgs
 
 ```csharp
 public class ProgressEventArgs : EventArgs
@@ -642,31 +686,158 @@ public class ProgressEventArgs : EventArgs
     public string? Detail { get; set; }
     public int Score { get; set; }
 }
-4.3 ReflectionProgressEventArgs
+```
+# 5. Handler Implementation Details
+
+## 5.1 ScrapingHandler
+
+```mermaid
+flowchart LR
+    subgraph Steps["Processing Steps"]
+        S1[Find Scraper Worker]
+        S2[Call LLM with prompt]
+        S3[Receive file path]
+        S4[Read file → extract content]
+        S5[Store ScrapedContent in context]
+        S6[Cache entities]
+    end
+
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
 ```
 
+**Key Implementation**:
 
-```csharp
-public class ReflectionProgressEventArgs : EventArgs
-{
-    public string LayerName { get; set; } = string.Empty;
-    public int LayerIndex { get; set; }
-    public int TotalLayers { get; set; }
-    public bool Passed { get; set; }
-    public string Detail { get; set; } = string.Empty;
-    public double ElapsedMs { get; set; }
-    public bool IsComplete { get; set; }
-    public bool AllPassed { get; set; }
-    public List<string> Issues { get; set; } = new();
-    public List<string> Suggestions { get; set; } = new();
-}
+- Calls LLM to crawl URL
+
+- LLM returns path to JSON file
+
+- Handler reads file and extracts content
+
+- Stores ScrapedContent and ScrapedFilePath in WorkerOutputs
+
+- Caches entities for later use
+
+## 5.2 AnalysisHandler
+
+```mermaid
+flowchart LR
+    subgraph Steps["Processing Steps"]
+        A1[Read ScrapedContent from context]
+        A2[Build prompt with scraped content]
+        A3[Call LLM → receive JSON]
+        A4[Save JSON to file]
+        A5[Parse JSON → extract data]
+        A6[Store AnalysisContent + PrimaryKeyword + Score]
+    end
+
+    A1 --> A2 --> A3 --> A4 --> A5 --> A6
 ```
 
+**Key Implementation**:
 
-# 5. API Reference
+- Reads ScrapedContent from context
 
-5.1 Public Interface
+- LLM returns JSON directly (no file tool calls)
 
+- Handler saves JSON to file
+
+- Extracts top_keywords, score, readability
+
+- Stores AnalysisContent, PrimaryKeyword, AnalysisScore
+
+## 5.3 ContentWritingHandler
+
+```mermaid
+flowchart LR
+    subgraph Steps["Processing Steps"]
+        W1[Read ScrapedContent + AnalysisContent]
+        W2[Extract PrimaryKeyword]
+        W3[Build prompt with strict structure]
+        W4[Call LLM → receive Markdown]
+        W5[Save Markdown to file]
+        W6[Store ArticleContent in context]
+    end
+
+    W1 --> W2 --> W3 --> W4 --> W5 --> W6
+```
+
+**Key Implementation:**
+
+- Reads ScrapedContent, AnalysisContent, PrimaryKeyword
+
+- LLM returns Markdown directly (no file tool calls)
+
+- Handler saves Markdown to file
+
+- Stores ArticleContent in context
+
+- Prompt enforces:
+
+- Meta Title & Description
+
+- H1/H2/H3 structure
+
+- 800-1000 words
+
+- No template phrases
+
+- 5+ entities, 2+ numbers
+
+## 5.4 ReflectionHandler
+
+```mermaid
+flowchart LR
+    subgraph Steps["Processing Steps"]
+        R1[Read ArticleContent from context]
+        R2[Run 4-layer heuristic]
+        R3[Emit PASS/FAIL for each layer]
+        R4[Store ReflectionResult]
+        R5[If FAIL → trigger rewrite]
+    end
+
+    R1 --> R2 --> R3 --> R4 --> R5
+```
+
+**Key Implementation:**
+
+- Reads ArticleContent from context
+
+- 4-layer heuristic with status notifications:
+
+- L1: Duplicate Words → ✅ PASS / ❌ FAIL
+
+- L1B: Template Phrases → ✅ PASS / ❌ FAIL
+
+- L2: Keyword Density → ✅ PASS / ❌ FAIL
+
+- L3: Readability → ✅ PASS / ❌ FAIL
+
+- L4: LLM Reflection → ✅ PASS / ❌ FAIL
+
+- Stores SEOReflectionResult
+
+- Triggers rewrite if needed
+
+## 5.5 SavingHandler
+
+```mermaid
+flowchart LR
+    subgraph Steps["Processing Steps"]
+        SV1[Read ArticleContent]
+        SV2[Read ReflectionResult]
+        SV3[Calculate final score]
+        SV4[Copy article to final directory]
+        SV5[Generate SEOUrlResult]
+    end
+
+    SV1 --> SV3
+    SV2 --> SV3
+    SV3 --> SV4
+    SV4 --> SV5
+```
+# 6. API Reference
+
+## 6.1 Public Interface
 
 ```csharp
 /// <summary>
@@ -710,62 +881,12 @@ public sealed class SEOCrawlSupervisorOrchestrator : IStreamingAgentOrchestrator
         IReadOnlyList<IGuardrail> guardrails,
         CancellationToken ct = default);
 }
-```
-
-
-# 6. Deployment & Configuration
-
-6.1 Environment Variables
-
-| Variable | Description | Default |
-| --- | --- | --- |
-| SEO_OUTPUT_DIR | Output directory path | ./output |
-| SEO_BATCH_TIMEOUT | Total batch timeout (minutes) | 120 |
-| SEO_WORKER_TIMEOUT | Worker timeout (seconds) | 120 |
-| SEO_BASE_TIMEOUT | Base timeout per handler (seconds) | 60 |
-| SEO_MAX_TIMEOUT | Maximum timeout (seconds) | 600 |
-| SEO_AUTO_SYNTHESIS | Enable auto tool synthesis | false |
-| SEO_ENABLE_REFLECTION | Enable final reflection | true |
-| SEO_TOKENS_PER_SECOND | LLM tokens per second | 50 |
-
-6.2 Configuration Example
-
-
-```json
-{
-  "SEOCrawlSupervisorOptions": {
-    "EnableFinalReflection": true,
-    "EnableAutoToolSynthesis": false,
-    "SaveArticlesToFiles": true,
-    "SaveFinalReport": true,
-    "SkipL4IfHeuristicPass": true,
-    "BatchTotalTimeoutMinutes": 120,
-    "MaxCorrectionRounds": 1,
-    "WorkerTimeoutSeconds": 120,
-    "LlmConfig": {
-      "TokensPerSecond": 50,
-      "SafetyBufferMultiplier": 1.5,
-      "MinTimeoutSeconds": 30,
-      "MaxTimeoutSeconds": 600,
-      "CharsPerToken": 4.0
-    },
-    "OutputDirectory": "./output",
-    "MaxUrls": 10,
-    "HandlerTokenMultipliers": {
-      "Scrape": 0.5,
-      "Analyze": 1.0,
-      "Write": 2.5,
-      "Reflect": 1.8,
-      "Save": 0.3
-    }
-  }
-}
-```
-
 
 # 7. Performance & Monitoring
 
-7.1 Performance Metrics
+```
+
+## 7.1 Performance Metrics
 
 | Metric | Target | Description |
 | --- | --- | --- |
@@ -775,8 +896,7 @@ public sealed class SEOCrawlSupervisorOrchestrator : IStreamingAgentOrchestrator
 | Reflection Accuracy | > 85% | Accuracy of quality detection |
 | Memory Usage | < 2GB | Peak memory consumption |
 | CPU Usage | < 80% | CPU utilization during batch |
-
-7.2 Logging Levels
+## 7.2 Logging & Monitoring
 
 | Level | Use Case | Example |
 | --- | --- | --- |
@@ -784,73 +904,87 @@ public sealed class SEOCrawlSupervisorOrchestrator : IStreamingAgentOrchestrator
 | Information | Normal operation | Phase completion, URL processed |
 | Warning | Recoverable issues | Retry attempts, timeout warnings |
 | Error | Non-recoverable | Worker crash, file write failure |
-
-
 # 8. Revision Summary
 
-8.1 Changes from v1.0.0 to v1.4.0
-
-| Component | v1.0.0 | v1.4.0 | Benefit |
+## 8.1 Changes from v1.4.0 to v1.5.0
+| Component | v1.4.0 | v1.5.0 | Benefit |
 | --- | --- | --- | --- |
-| Architecture | Single monolithic loop | Chain of Responsibility with 7 handlers | Separation of concerns, easier maintenance |
-| Progress | Manual yield updates | Event-driven with Channels | Unified streaming, better UI experience |
-| Timeout | Fixed values | Dynamic token-based calculation | Adaptive, prevents premature timeout |
-| Reflection | Embedded in orchestrator | Dedicated ReflectionEngine with 4 layers | Reusable, testable, extensible |
-| Logging | Plain text | Emoji-enhanced with timestamps | Better UX, instant status recognition |
-| Scoring | Basic (PASS/FAIL) | Weighted multi-source scoring | More accurate quality measurement |
-| Cache | None | Dictionary-based result caching | Avoids redundant processing |
-| Auto-Correction | None | Rewrite with worker synthesis | Self-healing, improved quality |
+| File Operations | LLM calls ReadFile/WriteFile tools | Handlers read/write files directly | Reduces LLM tool calls, faster, more reliable |
+| Data Flow | LLM returns file paths only | LLM returns content directly, handler saves files | Eliminates file-reading round trips |
+| Context Keys | Ad-hoc keys | Standardized keys (ScrapedContent, AnalysisContent, etc.) | Clear data flow, no duplication |
+| Content Writing | LLM writes to file via tool | LLM returns Markdown, handler saves | More control, validates content before save |
+| Reflection | Reads from file path | Reads from ArticleContent key | No disk I/O during reflection |
+| Error Recovery | Hard to trace | Clear fallback with context | Better debugging |
+## 8.2 Key Decisions
 
-8.2 Key Decisions
+Why remove LLM file tool calls?
 
-Why Chain of Responsibility?
+LLM often fails to call tools correctly (duplicate calls, wrong format)
 
-- Each handler has single responsibility
-- Easy to add/remove/reorder phases
-- Natural fit for pipeline processing
-Why Event-Driven Progress?
+File operations are deterministic – handlers can do it faster and more reliably
 
-- Unifies streaming and non-streaming
-- Decouples logic from presentation
-- Enables multiple subscribers (UI, logging, metrics)
-Why Token-Based Timeout?
+Reduces token usage (no tool call overhead)
 
-- LLM processing time is proportional to tokens
-- Adaptive to content length and model speed
-- Prevents both premature and excessive timeouts
-Why 4-Layer Reflection?
+Eliminates "file not found" errors
 
-- Covers all SEO quality dimensions
-- Layer 1-3 are fast heuristics (no LLM)
-- Layer 4 is optional LLM-based validation
-- SkipL4IfHeuristicPass saves cost
+Why store content in context?
 
-# 9. Appendix
+Avoids reading same file multiple times
 
-9.1 Vietnamese Stopwords
+Enables fallback if file is missing
 
+Faster processing (no disk I/O for each handler)
 
-```csharp
-public static readonly HashSet<string> VietnameseStopWords = new()
+Why use standardized keys?
+
+Clear data flow visibility
+
+Easier debugging
+
+Prevents data collision between URLs
+
+Why strict prompt for Writing?
+
+Ensures consistent output format
+
+Reduces post-processing needed
+
+Guarantees meta title/description presence
+
+# 9. Configuration Example
+
+```json
 {
-    "và", "của", "là", "để", "thì", "mà", "cho", "trong", "các", "những",
-    "một", "có", "được", "đã", "đang", "sẽ", "từ", "đến", "với", "tại",
-    // ... full list in source code
-};
-9.2 Template Phrases Detection
+  "SEOCrawlSupervisorOptions": {
+    "EnableFinalReflection": true,
+    "EnableAutoToolSynthesis": false,
+    "SaveArticlesToFiles": true,
+    "SaveFinalReport": true,
+    "SkipL4IfHeuristicPass": true,
+    "MaxUrls": 10,
+    "BatchTotalTimeoutMinutes": 120,
+    "MaxCorrectionRounds": 1,
+    "WorkerTimeoutSeconds": 120,
+    "LlmConfig": {
+      "TokensPerSecond": 50,
+      "SafetyBufferMultiplier": 1.5,
+      "MinTimeoutSeconds": 30,
+      "MaxTimeoutSeconds": 600,
+      "CharsPerToken": 4.0,
+      "EnableReasoning": true,
+      "ReasoningTimePerToken": 0.02,
+      "ReasoningBaseSeconds": 5.0,
+      "ReasoningMultiplier": 1.8
+    },
+    "OutputDirectory": "./output",
+    "HandlerTokenMultipliers": {
+      "Scrape": 0.5,
+      "Analyze": 1.0,
+      "Write": 2.5,
+      "Reflect": 1.8,
+      "Save": 0.3
+    }
+  }
+}
+Document Version: 1.5.0
 ```
-
-
-```csharp
-public static readonly List<string> TemplatePhrases = new()
-{
-    "ngoài ra bạn cũng nên quan tâm đến",
-    "bạn có biết",
-    "trong bài viết này chúng tôi sẽ",
-    // ... full list in source code
-};
-```
----
-
-**Document Version:** 1.4.0  
-
