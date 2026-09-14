@@ -1,6 +1,6 @@
 ## VnMLStudio LLM Agent Framework - A High-Performance Local AI Agent Framework written in .NET 10  
 ## Key features:
-- **🚀 Zero API Cost**: Optimized for local small language models (Gemma 4 E2B, Gemma 4 E4B, Qwen 2.5) via llama.cpp.
+- **🚀 Zero API Cost**: Optimized for local small language models (Qwen 3.8 4B,Gemma 4 E2B, Gemma 4 E4B...) via llama.cpp.
 - **🏗️ Architectural Elegance**: Built with a Decorator Chain Pattern for loose coupling.
 - **⚙️ Runtime Evolution**: Dynamic C# Tool Synthesis powered by Roslyn Compiler.
 
