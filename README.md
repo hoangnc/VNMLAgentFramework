@@ -9,7 +9,7 @@
 Build self-improving AI agents with reflection, planning, learning, and dynamic tool synthesis.
 
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](https://mariadb.com/bsl11/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue?style=flat-square)]()
 [![Local](https://img.shields.io/badge/100%25-Local-orange?style=flat-square)]()
 [![API Cost](https://img.shields.io/badge/API%20Cost-%240-success?style=flat-square)]()
