@@ -70,6 +70,22 @@ Optimized for small local LLMs via llama.cpp:
 - **Runs on CPU-only laptops** — 8GB RAM sufficient
 
 ---
+## 🚧 Project Status
+
+**Current state:** In active development. Publishing in phases.
+
+| Component | Status | ETA |
+|---|:---:|---|
+| P0 Reflection Engine | 🟡 Publishing soon | Week 2 |
+| P1 Planning & Multi-Agent | 🟡 Publishing soon | Week 3 |
+| P2 Learning | ⚪ Planned | Week 4 |
+| P3 Tool Synthesis | ⚪ Planned | Week 4 |
+| Full Framework | ⚪ Planned | Month 2 |
+| NuGet Packages | ⚪ Planned | Month 3 |
+
+**Want early access?** Star this repo or [subscribe to updates](http://vnmlstudio.runasp.net/en/blogs/).
+
+---
 
 ## 📊 Comparison
 
@@ -223,10 +239,41 @@ See CONTRIBUTING.md for guidelines.
 ### ⭐ Star History
 https://api.star-history.com/svg?repos=hoangnc/VNMLAgentFramework&type=Date
 
-## 📄 License
-MIT License — see LICENSE for details.
+---
 
-Free for commercial use. Attribution appreciated but not required.
+## 📄 License
+
+VNML Agent Framework is licensed under the **Business Source License 1.1 (BSL 1.1)**.
+
+### What This Means
+
+| Use Case | Free? |
+|---|:---:|
+| Personal projects | ✅ |
+| Educational use | ✅ |
+| Non-commercial open source | ✅ |
+| Development & testing | ✅ |
+| **Commercial production** | 💼 Requires license |
+| **Hosted SaaS** | 💼 Requires license |
+| **Embedded in commercial product** | 💼 Requires license |
+
+### Why BSL?
+
+- 🎁 **Free for individuals** — học tập, nghiên cứu, dự án cá nhân
+- 💼 **Sustainable** — công ty trả tiền để nuôi dev
+- 🔓 **Auto-open-source** — sau 4 năm, chuyển thành Apache 2.0
+
+### Commercial Licensing
+
+For production commercial use, contact: **contact@vnmlstudio.ai**
+
+See [COMMERCIAL.md](COMMERCIAL.md) for pricing and terms.
+
+### Long-Term Commitment
+
+After 4 years from each release date, that version automatically becomes **Apache 2.0** licensed. Community sẽ được dùng mãi mãi.
+
+*Inspired by MariaDB, HashiCorp, and Redis licensing models.*
 
 ### 💬 About the Author
 Built by Nguyễn Công Hoàng — a solo developer from Vietnam with 20 years of experience, building local-first AI tools for developers who need privacy and zero-cost solutions.
@@ -237,7 +284,7 @@ Built by Nguyễn Công Hoàng — a solo developer from Vietnam with 20 years o
 
 - 🐦 X: @HoangNC_VNML
 - 💼 LinkedIn: www.linkedin.com/in/hoang-nguyen-404486142
-- 📧 Email: contact@vnmlstudio.ai
+- 📧 Email: diemhoang8488@gmail.com
 
 ### ⭐ If this project helps you, please consider giving it a star!
 
