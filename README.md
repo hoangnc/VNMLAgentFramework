@@ -155,8 +155,10 @@ Console.WriteLine(result.Output);
 [ToolSynthesis] Tool activated. Replanning...
 [Reflective] Result complete. Skill extracted.
 [Learning] Episode saved to SkillBank
-🏗️ Architecture
-text
+```
+
+### 🏗️ Architecture
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │  Application Layer (WPF / WinForms / Console / API)         │
 ├─────────────────────────────────────────────────────────────┤
