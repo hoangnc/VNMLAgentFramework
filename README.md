@@ -144,6 +144,7 @@ var result = await agent.ExecuteAsync(
 
 Console.WriteLine(result.Output);
 ```
+---
 
 ### 4. Watch It Self-Improve
 ```text
@@ -156,6 +157,7 @@ Console.WriteLine(result.Output);
 [Reflective] Result complete. Skill extracted.
 [Learning] Episode saved to SkillBank
 ```
+---
 
 ## 🏗️ Architecture
 ```text
