@@ -177,6 +177,9 @@ Console.WriteLine(result.Output);
 │   LlamaCppSharp · llama.cpp · GGUF models                   │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
 **Design Principles:**
 
 **Drop-in upgrade —** Enable P0 → P1 → P2 → P3 without refactoring
