@@ -157,7 +157,7 @@ Console.WriteLine(result.Output);
 [Learning] Episode saved to SkillBank
 ```
 
-### 🏗️ Architecture
+## 🏗️ Architecture
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │  Application Layer (WPF / WinForms / Console / API)         │
@@ -183,23 +183,23 @@ Console.WriteLine(result.Output);
 
 **Fail-safe defaults —** Reflection catches errors before they propagate
 
-### 🎬 Real-World Examples
-## SEO Content Automation
+## 🎬 Real-World Examples
+### SEO Content Automation
 https://raw.githubusercontent.com/hoangnc/VNMLAgentFramework/main/VNMLAgentframework_App_SEO_CRAWL_BATCH_ORCHESTRATOR.png
 
 Batch crawl competitor URLs → deep SEO analysis → write 100% original content with 7-layer quality check → overnight.
 
-## PriceHunter Agent
+### PriceHunter Agent
 https://raw.githubusercontent.com/hoangnc/VNMLAgentFramework/main/VNMLAgentFramework_Example_Agent_PriceHunter.png
 
 Multi-step price tracking across e-commerce sites with dynamic tool synthesis.
 
-## VNML Studio
+### VNML Studio
 https://raw.githubusercontent.com/hoangnc/VNMLAgentFramework/main/VNMLStudio_PluginMMO_Screen_01.png
 
 Full desktop IDE with plugin system, docking, and Monaco editor.
 
-### 📚 Documentation & Resources
+## 📚 Documentation & Resources
 - **Source Code:** [Coming soon]
 - **📖 Blog**: vnmlstudio.runasp.net/blogs
 
@@ -226,7 +226,7 @@ Full desktop IDE with plugin system, docking, and Monaco editor.
 - □ v3.0 — Multi-language support (EN, VI, ZH, JA)
 **Vote for features:** GitHub Discussions
 
-### 🤝 Contributing
+## 🤝 Contributing
 We welcome contributions! Especially:
 
 - 🐛 Bug reports — Open an issue with reproduction steps
@@ -236,7 +236,7 @@ We welcome contributions! Especially:
 
 See CONTRIBUTING.md for guidelines.
 
-### Contributors
+## Contributors
 <a href="https://github.com/hoangnc/VNMLAgentFramework/graphs/contributors"> <img src="https://contrib.rocks/image?repo=hoangnc/VNMLAgentFramework" /> </a>
 ### ⭐ Star History
 https://api.star-history.com/svg?repos=hoangnc/VNMLAgentFramework&type=Date
@@ -277,19 +277,19 @@ After 4 years from each release date, that version automatically becomes **Apach
 
 *Inspired by MariaDB, HashiCorp, and Redis licensing models.*
 
-### 💬 About the Author
+## 💬 About the Author
 Built by Nguyễn Công Hoàng — a solo developer from Vietnam with 20 years of experience, building local-first AI tools for developers who need privacy and zero-cost solutions.
 
 "If OpenAI can be shut down tomorrow, your agents shouldn't be."
 
-### Connect:
+## Connect:
 
 - 🐦 X: @HoangNC_VNML
 - 💼 LinkedIn: www.linkedin.com/in/hoang-nguyen-404486142
 - 📧 Email: diemhoang8488@gmail.com
 
-### ⭐ If this project helps you, please consider giving it a star!
+## ⭐ If this project helps you, please consider giving it a star!
 
 Report Bug · Request Feature · Discussions
 
-### Made with ❤️ in Vietnam
+## Made with ❤️ in Vietnam
