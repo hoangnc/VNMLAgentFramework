@@ -118,8 +118,8 @@ dotnet build -c Release
 ```
 ### 2. Download a Model
 ```bash
-# Qwen 3.8B Q4 (recommended, ~2.3GB)
-# Get from HuggingFace: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF
+# Qwen 3.8B Q4 (recommended, ~2.8GB)
+# Get from HuggingFace: [https://huggingface.co/empero-ai/Qwen3.8-4B-Distill-GGUF]
 ```
 ### 3. Run First Agent
 ```csharp
@@ -177,9 +177,6 @@ Console.WriteLine(result.Output);
 │   LlamaCppSharp · llama.cpp · GGUF models                   │
 └─────────────────────────────────────────────────────────────┘
 ```
-
----
-
 **Design Principles:**
 
 **Drop-in upgrade —** Enable P0 → P1 → P2 → P3 without refactoring
@@ -187,6 +184,8 @@ Console.WriteLine(result.Output);
 **Decorator pattern —** Each capability wraps the previous
 
 **Fail-safe defaults —** Reflection catches errors before they propagate
+
+---
 
 ## 🎬 Real-World Examples
 ### SEO Content Automation
@@ -214,13 +213,13 @@ Full desktop IDE with plugin system, docking, and Monaco editor.
 
 - **🐦 X/Twitter**: @HoangNC_VNML
 
-### Deep Dives
-- 5 Layers of Agentic Architecture
-- Why We Removed Tool Calls from the LLM
-- Dynamic Timeout with Thinking Mode
-- Microsoft Copilot Search Indexed Our Framework
+## Deep Dives
+- **5 Layers of Agentic Architecture:** http://vnmlstudio.runasp.net/en/blogs/5-tang-kien-tao-agentic.html 
+- **Why We Removed Tool Calls from the LLM:** http://vnmlstudio.runasp.net/en/blogs/removing-tool-calls-llm.html
+- **Dynamic Timeout with Thinking Mode:** http://vnmlstudio.runasp.net/en/blogs/dynamic-timeout-thinking-mode.html
+- **Microsoft Copilot Search Indexed Our Framework:** http://vnmlstudio.runasp.net/en/blogs/microsoft-copilot-search-indexed-framework.html
 
-### 🗺️ Roadmap
+## 🗺️ Roadmap
 - ☑ P0 — Reflection Engine
 - ☑ P1 — Planning & Multi-Agent
 - ☑ P2 — Learning & Skill Extraction
