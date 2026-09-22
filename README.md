@@ -207,7 +207,7 @@ Full desktop IDE with plugin system, docking, and Monaco editor.
 - **Source Code:** [Coming soon]
 - **📖 Blog**: vnmlstudio.runasp.net/blogs
 
-- **🎥 YouTube**: [Coming soon]
+- **🎥 YouTube**: https://www.youtube.com/watch?v=o2wpUVms2ZI
 
 - **💬 Dev.to**: @hoangnc
 
