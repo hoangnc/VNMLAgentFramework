@@ -2,7 +2,7 @@
 
 namespace VnMLAgentFramework.LlamaCppClient.Domain
 {
-    public record ChatChunkResponse
+    public sealed record ChatChunkResponse
     {
         [JsonPropertyName("id")]
         public string? Id { get; set; }
