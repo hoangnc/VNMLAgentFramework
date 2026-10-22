@@ -5,7 +5,10 @@
     <File Path="../docs/SEO_Architecture_Design_VN.md" />
     <File Path="../docs/VnMLStudio_Agent_Framework_HLD_DD_VN.md" />
   </Folder>
-  <Project Path="VnMLAgentFramework.Abstractions/VnMLAgentFramework.Abstractions.csproj" Id="a853cfa0-9bae-487c-92e0-c592f2797e2e" />
-  <Project Path="VnMLAgentFramework.LlamaCppClient/VnMLAgentFramework.LlamaCppClient.csproj" Id="c2233e47-7f37-4cef-a686-e231c3307d62" />
-  <Project Path="VnMLAgentFramework/VnMLAgentFramework.csproj" Id="17b22abb-366f-46e6-a027-ac43db8b4f1a" />
+  <Folder Name="/docs/adr/">
+    <File Path="../docs/adr/ADR-001-Chart-Library.md" />
+  </Folder>
+  <Project Path="E:/Gits/VNMLAgentFramework/src/VnMLAgentFramework.Abstractions/VnMLAgentFramework.Abstractions.csproj" Id="a853cfa0-9bae-487c-92e0-c592f2797e2e" />
+  <Project Path="E:/Gits/VNMLAgentFramework/src/VnMLAgentFramework.LlamaCppClient/VnMLAgentFramework.LlamaCppClient.csproj" Id="c2233e47-7f37-4cef-a686-e231c3307d62" />
+  <Project Path="E:/Gits/VNMLAgentFramework/src/VnMLAgentFramework/VnMLAgentFramework.csproj" Id="17b22abb-366f-46e6-a027-ac43db8b4f1a" />
 </Solution>
